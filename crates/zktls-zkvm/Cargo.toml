@@ -1,0 +1,20 @@
+[package]
+name = "zktls-zkvm"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+# Internal dependencies
+zktls-core = { path = "../zktls-core" }
+zktls-crypto = { path = "../zktls-crypto" }
+
+# Common dependencies from workspace
+serde.workspace = true
+thiserror.workspace = true
+bincode.workspace = true
+
+# Shared zkTLS business logic
+# This crate provides platform-agnostic zkTLS verification logic that can be used
+# by any zkVM platform (SP1, RISC0, future zkVMs). It contains the core business
+# logic for TLS verification without any platform-specific dependencies.

@@ -1,0 +1,12 @@
+[package]
+name = "zktls-script"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+sp1-sdk = "5.2.1"
+zktls-core = { path = "../../../crates/zktls-core" }
+zktls-zkvm = { path = "../../../crates/zktls-zkvm" }
+
+[build-dependencies]
+sp1-build = "5.2.1"

@@ -1,0 +1,29 @@
+[package]
+name = "zktls-sp1"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+# Internal dependencies
+zktls-core = { path = "../zktls-core" }
+zktls-crypto-sp1 = { path = "../zktls-crypto-sp1" }
+zktls-zkvm = { path = "../zktls-zkvm" }
+
+# SP1-specific dependencies
+sp1-zkvm = { version = "5.2.1", default-features = false, features = ["lib"] }
+sp1-sdk = { version = "5.2.1" }
+
+# Script crate for guest program
+zktls-script = { path = "script" }
+
+# Common dependencies from workspace
+serde.workspace = true
+thiserror.workspace = true
+bincode.workspace = true
+
+# Platform-specific dependencies
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[features]
+default = []
