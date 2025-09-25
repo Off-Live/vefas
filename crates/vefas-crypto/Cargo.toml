@@ -1,0 +1,32 @@
+[package]
+name = "vefas-crypto"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+description = "Cryptographic implementations and trait definitions for VEFAS zkTLS verification"
+
+[features]
+default = ["std"]
+std = []
+no_std = []
+
+[dependencies]
+vefas-types = { path = "../vefas-types", default-features = false }
+
+# Serialization
+serde = { version = "1.0", default-features = false, features = ["derive", "alloc"] }
+serde_json = "1.0"
+hkdf = "0.12"
+sha2 = "0.10"
+hmac = "0.12"
+hex = "0.4"
+clap = { version = "4.5", features = ["derive"] }
+
+[dev-dependencies]
+rstest = "0.26.1"
+proptest = "1.0"
+hex-literal = "1.0.0"
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]

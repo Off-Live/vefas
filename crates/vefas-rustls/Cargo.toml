@@ -1,0 +1,22 @@
+[package]
+name = "vefas-rustls"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+description = "Custom rustls CryptoProvider with ephemeral key capture for VEFAS"
+
+[dependencies]
+rustls = { version = "0.23", default-features = false }
+aws-lc-rs = { version = "1", default-features = false }
+x25519-dalek = { version = "2", default-features = false, features = ["alloc"] }
+rand_core = { version = "0.9", default-features = false }
+zeroize = { version = "1.8", default-features = false }
+thiserror = "2"
+getrandom = { version = "0.3", default-features = true }
+rand = { version = "0.9", default-features = true }
+
+[features]
+default = ["std"]
+std = ["rustls/std"]
+
+

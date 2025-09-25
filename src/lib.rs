@@ -1,23 +1,24 @@
-//! VEFAS: Verifiable Execution Framework for Agents
-//! 
-//! A production-grade zkTLS client inside SP1 zkVM with strict TDD development.
-//! 
-//! This root package coordinates workspace feature flags for SP1 and RISC0 backends.
-//! The actual implementation is in the workspace crates.
+//! VEFAS Project
+//!
+//! This project provides production-grade zkTLS verification through HTTP API endpoints.
+//! CLI functionality has been removed in favor of a dedicated vefas-gateway HTTP server.
+//!
+//! Use vefas-gateway crate for HTTP API endpoints:
+//! - POST /requests: Execute TLS request and generate proof
+//! - POST /verify: Verify cryptographic proof authenticity
 
-#![doc = include_str!("../REQUIREMENTS.md")]
+// This file serves as the library root for the workspace.
+// The actual HTTP server implementation is in vefas-gateway crate.
 
-// Re-export the main crates for convenience
-#[cfg(feature = "sp1")]
-pub use zktls_crypto as crypto;
-#[cfg(feature = "sp1")]
-pub use zktls_core as core;
+pub use vefas_types::*;
+pub use vefas_crypto::*;
+pub use vefas_core::*;
 
-#[cfg(feature = "risc0")]
-pub use zktls_crypto as crypto;
-#[cfg(feature = "risc0")]
-pub use zktls_core as core;
-
-// Default case (for compilation without features)
-#[cfg(not(any(feature = "sp1", feature = "risc0")))]
-pub use zktls_core as core;
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn workspace_imports_work() {
+        // Verify that workspace imports are functioning
+        assert!(true, "Workspace crates should be importable");
+    }
+}

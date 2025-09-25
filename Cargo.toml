@@ -1,16 +1,21 @@
 [workspace]
 resolver = "2"
 members = [
-    "crates/zktls-core",
-    "crates/zktls-crypto",
-    "crates/zktls-crypto-sp1",
-    "crates/zktls-crypto-risc0",
-    "crates/zktls-zkvm",
-    "crates/zktls-sp1",
-    "crates/zktls-sp1/program",
-    "crates/zktls-sp1/script",
-    "crates/zktls-risc0",
-    "crates/zktls-gateway"
+    "crates/vefas-types",
+    "crates/vefas-crypto",
+    "crates/vefas-crypto-native",
+    "crates/vefas-crypto-sp1",
+    "crates/vefas-crypto-risc0",
+    "crates/vefas-core",
+    "crates/vefas-gateway",
+    "crates/vefas-rustls",
+    "crates/vefas-sp1",
+    "crates/vefas-sp1/script",
+    "crates/vefas-sp1/program",
+    "crates/vefas-risc0",
+    "crates/vefas-risc0/methods",
+    "crates/vefas-risc0/methods/guest",
+    "tests"
 ]
 
 [workspace.package]
@@ -43,20 +48,24 @@ edition.workspace = true
 license.workspace = true
 publish = false
 
+
 [features]
 default = []
-sp1 = [
-    "zktls-core/sp1",
-    "zktls-gateway/sp1"
-]
-risc0 = [
-    "zktls-core/risc0",
-    "zktls-gateway/risc0"
-]
+# All platforms are now built by default - no feature flags needed
 
 [dependencies]
-zktls-crypto = { path = "crates/zktls-crypto", default-features = false }
-zktls-crypto-sp1 = { path = "crates/zktls-crypto-sp1", optional = true }
-zktls-core = { path = "crates/zktls-core", default-features = false }
-zktls-zkvm = { path = "crates/zktls-zkvm", default-features = false }
-zktls-gateway = { path = "crates/zktls-gateway", default-features = false }
+# Internal dependencies - using new vefas- prefixed crates
+vefas-types = { path = "crates/vefas-types", default-features = false }
+vefas-crypto = { path = "crates/vefas-crypto", default-features = false }
+vefas-crypto-native = { path = "crates/vefas-crypto-native", default-features = false }
+vefas-crypto-sp1 = { path = "crates/vefas-crypto-sp1", default-features = false }
+vefas-crypto-risc0 = { path = "crates/vefas-crypto-risc0", default-features = false }
+vefas-core = { path = "crates/vefas-core", default-features = false, features = ["std", "tokio-rustls"] }
+
+
+# Async runtime
+tokio.workspace = true
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }

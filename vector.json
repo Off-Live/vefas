@@ -1,0 +1,14 @@
+{
+  "shared_secret": "9f86d081884c7d659a2feaa0c55ad015",
+  "transcript_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "early_secret": "b613679a0814d9ec772f95d778c35fc5ff1697c493715653c6c712144292c5ad",
+  "handshake_secret": "6693af29b56ea8f9e5d77a1a81a5e09c803e83ae8780a5482d63eb4936d17dd2",
+  "master_secret": "0bf58331ff624d47638868af1104c085f96a8d40d5a1f261b9464ef8ef79b619",
+  "client_application_secret": "5387b1740e4c09801fc821872a34026e2cff5949b52b7c3c7d0cd52077e847ea",
+  "server_application_secret": "43428fd3c69518ea21aeff00b33a2bcb5b47670485f83bb022153e25981584a2",
+  "client_application_key": "e38f931d6851cced4290bd93b647181d",
+  "server_application_key": "18dc20d83d310ad7e51f20a89b80059b",
+  "client_application_iv": "1d1f193d45d0e583c061fff3",
+  "server_application_iv": "15b77aa70b4bd0c9dbbe8427",
+  "resumption_master_secret": "76b1c84504d20aa9f4cba04ef8b1c626cf573f2e18634bed7bc65d5023f24fb2"
+}
