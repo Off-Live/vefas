@@ -5,7 +5,7 @@
 
 use vefas_risc0::VefasRisc0Prover;
 use vefas_types::VefasCanonicalBundle;
-use vefas_risc0_methods::GUEST_ID;
+use vefas_risc0_methods::VEFAS_RISC0_GUEST_ID as GUEST_ID;
 
 fn main() {
     // Initialize logging

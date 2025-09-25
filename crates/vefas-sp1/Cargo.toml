@@ -9,13 +9,14 @@ description = "SP1 zkVM implementation for VEFAS - production-grade zero-knowled
 # Internal dependencies
 vefas-types = { path = "../vefas-types" }
 vefas-crypto = { path = "../vefas-crypto" }
+uuid = { version = "1.10", features = ["v4"], default-features = false }
 
 # SP1-specific dependencies
 sp1-zkvm = { version = "5.2.1", default-features = false, features = ["lib"] }
-sp1-sdk = { version = "5.2.1" }
+sp1-sdk = { version = "5.2.1", optional = true }
 
 # Script crate for guest program
-vefas-sp1-script = { path = "script" }
+vefas-sp1-script = { path = "script", optional = true }
 
 # Common dependencies from workspace
 serde.workspace = true
@@ -26,4 +27,5 @@ bincode.workspace = true
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 [features]
-default = []
+default = ["host-prover"]
+host-prover = ["sp1-sdk", "vefas-sp1-script"]

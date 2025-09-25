@@ -9180,7 +9180,11 @@ dependencies = [
 name = "vefas"
 version = "0.1.0"
 dependencies = [
+ "axum 0.8.4",
+ "reqwest",
+ "serde_json",
  "tokio",
+ "tower 0.5.2",
  "tracing",
  "tracing-subscriber 0.3.20",
  "vefas-core",
@@ -9188,6 +9192,7 @@ dependencies = [
  "vefas-crypto-native",
  "vefas-crypto-risc0",
  "vefas-crypto-sp1",
+ "vefas-gateway",
  "vefas-types",
 ]
 
@@ -9389,6 +9394,8 @@ dependencies = [
  "risc0-zkvm",
  "serde",
  "thiserror 1.0.69",
+ "vefas-crypto",
+ "vefas-crypto-risc0",
  "vefas-types",
 ]
 
@@ -9423,6 +9430,7 @@ dependencies = [
  "sp1-zkvm",
  "thiserror 2.0.16",
  "tracing-subscriber 0.3.20",
+ "uuid",
  "vefas-crypto",
  "vefas-sp1-script",
  "vefas-types",
@@ -9436,6 +9444,7 @@ dependencies = [
  "serde",
  "sp1-zkvm",
  "thiserror 2.0.16",
+ "vefas-crypto",
  "vefas-crypto-sp1",
  "vefas-types",
 ]

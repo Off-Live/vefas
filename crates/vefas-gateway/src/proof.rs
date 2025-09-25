@@ -179,8 +179,7 @@ impl ProofService {
                     use base64::{engine::general_purpose, Engine as _};
                     let proof_data_b64 = general_purpose::STANDARD.encode(&risc0_proof.receipt_data);
 
-                    // Convert RISC0 proof claim to gateway proof claim
-                    // RISC0 MVP claim lacks extended TLS fields; populate conservative defaults
+                    // Convert RISC0 proof claim to gateway proof claim (extended fields)
                     let claim = ProofClaim {
                         domain: risc0_proof.claim.domain,
                         method: risc0_proof.claim.method,
@@ -189,10 +188,10 @@ impl ProofService {
                         response_hash: risc0_proof.claim.response_hash,
                         timestamp: risc0_proof.claim.timestamp,
                         status_code: risc0_proof.claim.status_code,
-                        tls_version: "1.3".to_string(),
-                        cipher_suite: String::new(),
-                        certificate_chain_hash: String::new(),
-                        handshake_transcript_hash: String::new(),
+                        tls_version: risc0_proof.claim.tls_version,
+                        cipher_suite: risc0_proof.claim.cipher_suite,
+                        certificate_chain_hash: risc0_proof.claim.certificate_chain_hash,
+                        handshake_transcript_hash: risc0_proof.claim.handshake_transcript_hash,
                     };
 
                     // Convert RISC0 execution metadata to gateway execution metadata
@@ -319,6 +318,10 @@ impl ProofService {
                         response_hash: proof_data.claim.response_hash.clone(),
                         timestamp: proof_data.claim.timestamp,
                         status_code: proof_data.claim.status_code,
+                        tls_version: proof_data.claim.tls_version.clone(),
+                        cipher_suite: proof_data.claim.cipher_suite.clone(),
+                        certificate_chain_hash: proof_data.claim.certificate_chain_hash.clone(),
+                        handshake_transcript_hash: proof_data.claim.handshake_transcript_hash.clone(),
                     };
 
                     let risc0_exec_metadata = vefas_risc0::VefasExecutionMetadata {
@@ -349,10 +352,10 @@ impl ProofService {
                         response_hash: verified.response_hash,
                         timestamp: verified.timestamp,
                         status_code: verified.status_code,
-                        tls_version: "1.3".to_string(),
-                        cipher_suite: String::new(),
-                        certificate_chain_hash: String::new(),
-                        handshake_transcript_hash: String::new(),
+                        tls_version: verified.tls_version,
+                        cipher_suite: verified.cipher_suite,
+                        certificate_chain_hash: verified.certificate_chain_hash,
+                        handshake_transcript_hash: verified.handshake_transcript_hash,
                     }
                 } else {
                     return Err(VefasGatewayError::UnsupportedPlatform("RISC0 prover not initialized".to_string()));

@@ -69,3 +69,10 @@ tokio.workspace = true
 # Logging
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[dev-dependencies]
+reqwest = { version = "0.12", features = ["json", "rustls-tls"] }
+serde_json = "1.0"
+axum = { version = "0.8", features = ["http2", "macros", "tracing"] }
+tower = { version = "0.5", features = ["util"] }
+vefas-gateway = { path = "crates/vefas-gateway" }

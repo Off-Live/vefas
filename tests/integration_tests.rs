@@ -200,6 +200,20 @@ async fn test_e2e_proof_generation_and_verification_sp1() {
         }
     }
 
+    // Pre-flight network check; skip if outbound HTTPS is unavailable
+    if let Ok(pre_client) = Client::builder().timeout(Duration::from_secs(5)).build() {
+        match pre_client.get("https://httpbin.org/get").send().await {
+            Ok(resp) if resp.status().is_success() => {}
+            _ => {
+                eprintln!("Skipping: outbound network not available for httpbin.org");
+                return;
+            }
+        }
+    } else {
+        eprintln!("Skipping: outbound network not available for httpbin.org");
+        return;
+    }
+
     let client = Client::new();
     let payload = serde_json::json!({
         "method": "GET",
@@ -222,6 +236,76 @@ async fn test_e2e_proof_generation_and_verification_sp1() {
     let proof = exec_body.get("proof").expect("missing proof");
     let platform = proof.get("platform").and_then(|v| v.as_str()).unwrap_or("");
     assert_eq!(platform, "sp1");
+
+    // Verify the proof
+    let verify_payload = serde_json::json!({"proof": proof});
+    let verify_resp = client
+        .post(&format!("{}/api/v1/verify", base))
+        .json(&verify_payload)
+        .send()
+        .await
+        .expect("Failed to call /verify");
+
+    assert!(verify_resp.status().is_success(), "verify endpoint failed: {}", verify_resp.status());
+    let verify_body: Value = verify_resp.json().await.expect("Invalid JSON response");
+    assert!(verify_body.get("success").and_then(|v| v.as_bool()).unwrap_or(false));
+    let verification_result = verify_body.get("verification_result").expect("missing verification_result");
+    assert!(verification_result.get("valid").and_then(|v| v.as_bool()).unwrap_or(false));
+}
+
+#[tokio::test]
+async fn test_e2e_proof_generation_and_verification_risc0() {
+    let (_server, base) = match spawn_gateway_for_tests().await { Some(v) => v, None => return };
+
+    // Health check to ensure RISC0 platform is available; otherwise skip
+    let health = reqwest::get(format!("{}/api/v1/health", base)).await.ok();
+    if let Some(resp) = health {
+        if let Ok(val) = resp.json::<Value>().await {
+            let platforms = val.get("platforms").and_then(|v| v.as_array()).cloned().unwrap_or_default();
+            let has_risc0 = platforms.iter().any(|p| p.as_str() == Some("risc0"));
+            if !has_risc0 {
+                eprintln!("Skipping: RISC0 platform not available");
+                return;
+            }
+        }
+    }
+
+    // Pre-flight network check; skip if outbound HTTPS is unavailable
+    if let Ok(pre_client) = Client::builder().timeout(Duration::from_secs(5)).build() {
+        match pre_client.get("https://httpbin.org/get").send().await {
+            Ok(resp) if resp.status().is_success() => {}
+            _ => {
+                eprintln!("Skipping: outbound network not available for httpbin.org");
+                return;
+            }
+        }
+    } else {
+        eprintln!("Skipping: outbound network not available for httpbin.org");
+        return;
+    }
+
+    let client = Client::new();
+    let payload = serde_json::json!({
+        "method": "GET",
+        "url": "https://httpbin.org/get",
+        "headers": {"user-agent": "VEFAS-Tests"},
+        "proof_platform": "risc0",
+        "timeout_ms": 30000
+    });
+
+    let exec_resp = client
+        .post(&format!("{}/api/v1/requests", base))
+        .json(&payload)
+        .send()
+        .await
+        .expect("Failed to call /requests");
+
+    assert!(exec_resp.status().is_success(), "requests endpoint failed: {}", exec_resp.status());
+    let exec_body: Value = exec_resp.json().await.expect("Invalid JSON response");
+    assert!(exec_body.get("success").and_then(|v| v.as_bool()).unwrap_or(false));
+    let proof = exec_body.get("proof").expect("missing proof");
+    let platform = proof.get("platform").and_then(|v| v.as_str()).unwrap_or("");
+    assert_eq!(platform, "risc0");
 
     // Verify the proof
     let verify_payload = serde_json::json!({"proof": proof});

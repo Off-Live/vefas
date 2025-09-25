@@ -4,11 +4,22 @@
       "mcp__sequential-thinking__sequentialthinking",
       "Bash(cargo check:*)",
       "Bash(cargo test:*)",
+      "Bash(cargo tree:*)",
+      "Bash(cargo build:*)",
+      "Bash(cargo run:*)",
       "Bash(find:*)",
       "mcp__context7__resolve-library-id",
       "mcp__context7__get-library-docs",
       "WebSearch",
-      "Bash(cargo tree:*)"
+      "mcp__git-mcp-sp1__fetch_sp1_documentation",
+      "mcp__git-mcp-sp1__search_sp1_documentation",
+      "mcp__git-mcp-sp1__search_sp1_code",
+      "mcp__git-mcp-sp1__fetch_generic_url_content",
+      "mcp__git-mcp-risc0__fetch_risc0_documentation",
+      "mcp__git-mcp-risc0__search_risc0_documentation",
+      "mcp__git-mcp-rustls__fetch_rustls_documentation",
+      "mcp__git-mcp-rustls__search_rustls_code",
+      "mcp__git-mcp-rustls__fetch_generic_url_content"
     ],
     "deny": [],
     "ask": []

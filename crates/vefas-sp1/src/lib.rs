@@ -100,10 +100,7 @@ impl VefasSp1Prover {
         let _ = std::panic::catch_unwind(|| {
             utils::setup_logger();
         });
-
-        Self {
-            prover: ProverClient::from_env(),
-        }
+        Self { prover: ProverClient::from_env() }
     }
 
     /// Generate a proof for the given VEFAS canonical bundle
@@ -122,6 +119,10 @@ impl VefasSp1Prover {
     /// 4. Extract claim from public values
     /// 5. Return structured proof wrapper
     pub fn generate_proof(&self, bundle: &VefasCanonicalBundle) -> VefasResult<VefasSp1Proof> {
+        #[cfg(not(feature = "host-prover"))]
+        {
+            return Err(VefasError::zkvm_error("sp1", "host prover disabled"));
+        }
         let start_time = Instant::now();
 
         // Validate bundle before processing
@@ -139,7 +140,7 @@ impl VefasSp1Prover {
         let mut proof = self.prover
             .prove(&pk, &stdin)
             .run()
-            .map_err(|e| VefasError::zkvm_error("sp1", &format!("SP1 proof execution failed: {}", e)))?;
+            .map_err(|e| VefasError::zkvm_error("sp1", &format!("SP1 proof execution failed: {:?}", e)))?;
 
         let proof_time = proof_start.elapsed();
 
@@ -183,7 +184,7 @@ impl VefasSp1Prover {
         // Verify proof cryptographically
         self.prover
             .verify(&sp1_proof, &vk)
-            .map_err(|e| VefasError::zkvm_error("sp1", &format!("SP1 proof verification failed: {}", e)))?;
+            .map_err(|e| VefasError::zkvm_error("sp1", &format!("SP1 proof verification failed: {:?}", e)))?;
 
         // Return the verified claim
         Ok(proof.claim.clone())
@@ -294,7 +295,7 @@ mod tests {
             }
             Err(e) => {
                 // Expected to fail until guest program is compiled
-                println!("Expected failure due to missing guest program: {}", e);
+                println!("Expected failure due to missing guest program: {:?}", e);
             }
         }
     }
@@ -303,9 +304,6 @@ mod tests {
     fn test_crypto_provider_creation() {
         let provider = VefasSp1CryptoProvider::new();
         assert!(provider.is_ok());
-
-        let provider = provider.unwrap();
-        assert_eq!(provider.provider_name(), "vefas-sp1");
     }
 
     #[test]

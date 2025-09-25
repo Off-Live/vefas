@@ -10,7 +10,7 @@ vefas-types = { path = "../vefas-types" }
 vefas-crypto = { path = "../vefas-crypto" }
 
 # RISC0-specific dependencies
-risc0-zkvm = { version = "3.0.3", default-features = false, features = ["prove", "unstable"] }
+risc0-zkvm = { version = "3.0.3", default-features = false, features = ["client", "prove", "unstable"] }
 
 # Methods crate for guest program
 vefas-risc0-methods = { path = "methods" }
@@ -26,3 +26,4 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 [features]
 default = []
 cuda = ["risc0-zkvm/cuda"]
+prove = ["risc0-zkvm/prove"]

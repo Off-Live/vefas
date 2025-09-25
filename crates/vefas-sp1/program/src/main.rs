@@ -27,11 +27,15 @@
 #![no_std]
 
 extern crate alloc;
-use alloc::{string::{String, ToString}, vec::Vec};
+use alloc::{string::{String, ToString}, vec::Vec, format};
 
 use serde::{Serialize, Deserialize};
 use vefas_types::{VefasCanonicalBundle, VefasResult, VefasError};
 use vefas_crypto_sp1::create_sp1_provider;
+use vefas_crypto::traits::{Hash, Aead, Kdf, KeyExchange};
+
+// Provide a no-op eprintln! for no_std environment to satisfy macro expansion
+macro_rules! eprintln { ($($tt:tt)*) => { () } }
 
 /// VEFAS proof claim - what this program proves
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -80,6 +84,10 @@ pub fn main() {
                 response_hash: String::new(),
                 timestamp: 0,
                 status_code: 0,
+                tls_version: String::new(),
+                cipher_suite: String::new(),
+                certificate_chain_hash: String::new(),
+                handshake_transcript_hash: String::new(),
             }
         }
     };
@@ -119,10 +127,10 @@ fn verify_vefas_bundle(bundle: &VefasCanonicalBundle) -> VefasResult<VefasProofC
     let suite_id = parse_server_cipher_suite(&bundle.server_hello)?;
     let cipher_suite = cipher_suite_name(suite_id).to_string();
     let tls_version = "1.3".to_string(); // TLS 1.3 only
-    let mut cert_concat: alloc::vec::Vec<u8> = alloc::vec::Vec::new();
+    let mut cert_concat: Vec<u8> = Vec::new();
     for cert in &bundle.certificate_chain { cert_concat.extend_from_slice(cert); }
     let certificate_chain_hash = hex_lower(crypto.sha256(&cert_concat).as_slice());
-    let mut hs_msgs: alloc::vec::Vec<&[u8]> = alloc::vec::Vec::new();
+    let mut hs_msgs: Vec<&[u8]> = Vec::new();
     hs_msgs.push(&bundle.client_hello);
     hs_msgs.push(&bundle.server_hello);
     if !bundle.certificate_msg.is_empty() { hs_msgs.push(&bundle.certificate_msg); }
@@ -269,7 +277,7 @@ fn verify_server_finished(bundle: &VefasCanonicalBundle, crypto: &vefas_crypto_s
     let handshake_secret = crypto.hkdf_extract(&derived, &shared);
 
     // Transcript hash up to (but excluding) Finished
-    let mut msgs: alloc::vec::Vec<&[u8]> = alloc::vec::Vec::new();
+    let mut msgs: Vec<&[u8]> = Vec::new();
     msgs.push(&bundle.client_hello);
     msgs.push(&bundle.server_hello);
     if !bundle.certificate_msg.is_empty() { msgs.push(&bundle.certificate_msg); }
@@ -333,7 +341,7 @@ fn derive_session_keys(bundle: &VefasCanonicalBundle, crypto: &vefas_crypto_sp1:
     let derived_hs = hkdf_expand_label(crypto, &handshake_secret, b"derived", &[], 32)?;
     let master_secret = crypto.hkdf_extract(&derived_hs, &[]);
     // Transcript including Cert/CertVerify if present for application secrets
-    let mut msgs: alloc::vec::Vec<&[u8]> = alloc::vec::Vec::new();
+    let mut msgs: Vec<&[u8]> = Vec::new();
     msgs.push(&bundle.client_hello);
     msgs.push(&bundle.server_hello);
     if !bundle.certificate_msg.is_empty() { msgs.push(&bundle.certificate_msg); }

@@ -51,6 +51,14 @@ pub struct VefasProofClaim {
     pub timestamp: u64,
     /// HTTP status code received
     pub status_code: u16,
+    /// TLS version string (e.g., "1.3")
+    pub tls_version: String,
+    /// Cipher suite name (e.g., "TLS_AES_128_GCM_SHA256")
+    pub cipher_suite: String,
+    /// SHA256 hash of concatenated certificate chain (DER)
+    pub certificate_chain_hash: String,
+    /// SHA256 hash of handshake transcript up to CertificateVerify
+    pub handshake_transcript_hash: String,
 }
 
 /// Execution metadata for VEFAS proofs
@@ -279,7 +287,7 @@ mod tests {
             }
             Err(e) => {
                 // Expected to fail until guest program is compiled
-                println!("Expected failure due to missing guest program: {}", e);
+                    println!("Expected failure due to missing guest program: {:?}", e);
             }
         }
     }

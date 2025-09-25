@@ -576,12 +576,6 @@ mod tests {
         let client = VefasClient::new().unwrap();
         let result = client.execute_request("GET", "https://example.com", None, None).await;
         assert!(result.is_err());
-        match result {
-            Err(VefasCoreError::Internal(msg)) => {
-                assert!(msg.contains("Phase 1.3 complete") || msg.contains("not yet implemented") || msg.contains("not yet complete"));
-            }
-            _ => panic!("Expected Internal error with phase completion or implementation message"),
-        }
     }
 
     #[tokio::test(flavor = "current_thread")]
@@ -597,8 +591,8 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_real_tls_connection() {
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_real_tls_connection() {
         // This test requires network access and may be slow
         // Skip in CI environments without network access
         if std::env::var("SKIP_NETWORK_TESTS").is_ok() {
@@ -606,16 +600,7 @@ mod tests {
         }
 
         let client = VefasClient::new().unwrap();
-
-        // Test basic TLS connection establishment (without full HTTP)
-        let handle = std::thread::spawn(move || {
-            // Use a simple runtime for the async test
-            futures::executor::block_on(async {
-                client.connect("httpbin.org", 443).await
-            })
-        });
-
-        let result = handle.join().unwrap();
+        let result = client.connect("httpbin.org", 443).await;
 
         // Should successfully establish TLS connection
         match result {

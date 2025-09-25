@@ -8,6 +8,7 @@ publish = false
 sp1-zkvm = { version = "5.2.1", features = ["embedded"] }
 vefas-types = { path = "../../vefas-types" }
 vefas-crypto-sp1 = { path = "../../vefas-crypto-sp1" }
+vefas-crypto = { path = "../../vefas-crypto", default-features = false }
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
@@ -15,3 +16,10 @@ bincode = "2.0"
 
 # Error handling
 thiserror = "2.0"
+
+[[bin]]
+name = "vefas-sp1-program"
+path = "src/main.rs"
+test = false
+bench = false
+doctest = false

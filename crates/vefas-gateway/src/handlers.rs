@@ -16,6 +16,7 @@ use crate::{
     types::*,
     error::*,
 };
+use vefas_types::VefasCanonicalBundle;
 
 /// Handle POST /requests endpoint - Execute TLS request and generate proof
 #[axum::debug_handler]
@@ -43,13 +44,12 @@ pub async fn execute_request(
         let body = payload.get_body_bytes()
             .map_err(|e| VefasGatewayError::InvalidRequest(e))?;
 
-        debug!("Executing HTTPS request via vefas-core");
-
         // Convert headers to the format expected by vefas-core
         let headers_str_refs: Option<Vec<(&str, &str)>> = headers.as_ref().map(|h| {
             h.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect()
         });
 
+        debug!("Executing HTTPS request via vefas-core");
         state.vefas_client
             .execute_request(
                 &payload.method.to_string(),
@@ -248,6 +248,10 @@ mod tests {
             response_hash: "hash456".to_string(),
             timestamp: 1234567890,
             status_code: 200,
+            tls_version: "1.3".to_string(),
+            cipher_suite: "TLS_AES_128_GCM_SHA256".to_string(),
+            certificate_chain_hash: String::new(),
+            handshake_transcript_hash: String::new(),
         };
 
         use base64::{engine::general_purpose, Engine as _};
