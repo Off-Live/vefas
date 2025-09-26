@@ -15,14 +15,12 @@ The proof is portable and verifiable by anyone — **no MPC, no notary, no trust
 
 ## Quick Start
 
+### Installation
+See [SETUP.md](./SETUP.md) for complete installation instructions including Rust, SP1, and RISC0 setup.
+
+### Usage (after setup)
 ```bash
-# Build the project
-cargo build --workspace
-
-# Run tests
-cargo test --workspace --verbose
-
-# Start the gateway server (development)
+# Start the gateway server
 cargo run --package vefas-gateway
 
 # Generate a proof (example)
