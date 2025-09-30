@@ -6,6 +6,7 @@ publish = false
 
 [dependencies]
 sp1-zkvm = { version = "5.2.1", features = ["embedded"] }
+sp1-derive = { version = "5.2.1" }
 vefas-types = { path = "../../vefas-types" }
 vefas-crypto-sp1 = { path = "../../vefas-crypto-sp1" }
 vefas-crypto = { path = "../../vefas-crypto", default-features = false }
@@ -16,6 +17,15 @@ bincode = "2.0"
 
 # Error handling
 thiserror = "2.0"
+
+# X.509 parsing (no_std + alloc)
+x509-cert = { version = "0.2", default-features = false }
+spki = { version = "0.7", default-features = false }
+der = { version = "0.7", default-features = false, features = ["alloc"] }
+const-oid = { version = "0.10", default-features = false }
+
+[dev-dependencies]
+rcgen = "0.14"
 
 [[bin]]
 name = "vefas-sp1-program"

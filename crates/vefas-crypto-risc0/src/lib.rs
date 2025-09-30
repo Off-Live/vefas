@@ -32,7 +32,6 @@
 //! - **Complete API**: Implements all VEFAS cryptographic traits
 
 #![no_std]
-#![forbid(std)]
 #![forbid(unsafe_code)]
 #![deny(
     missing_docs,

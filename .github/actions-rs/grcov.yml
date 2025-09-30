@@ -1,0 +1,80 @@
+# grcov configuration for VEFAS workspace
+# Configuration for Mozilla's grcov tool to collect and aggregate code coverage
+
+# Include branch coverage information
+branch: true
+
+# Ignore files that don't exist (useful for conditional compilation)
+ignore-not-existing: true
+
+# Use LLVM source-based coverage (requires appropriate RUSTFLAGS)
+llvm: true
+
+# Include covered lines in output
+filter: covered
+
+# Output format - lcov for compatibility with many tools
+output-type: lcov
+
+# Output file path
+output-path: ./target/coverage/lcov.info
+
+# Prefix directory to strip from file paths in output
+prefix-dir: /Users/lebrian/Documents/works/bytebitlabs/vefas/
+
+# Files/directories to ignore in coverage analysis
+ignore:
+  # System and external paths
+  - "/*"
+  - "C:/*"
+  - "../*"
+
+  # Rust toolchain and dependencies
+  - "*/rustc/*"
+  - "*/.cargo/registry/*"
+  - "*/.cargo/git/*"
+  - "*/target/debug/build/*"
+  - "*/target/release/build/*"
+
+  # Test files (we want to measure test coverage, not include test code in coverage)
+  - "*/tests/*"
+  - "*/test_*"
+  - "*_test.rs"
+  - "*/benches/*"
+  - "*/examples/*"
+
+  # Generated files
+  - "*/target/debug/deps/*"
+  - "*/target/release/deps/*"
+  - "**/generated/**"
+
+  # SP1 and RISC0 specific ignores for build artifacts
+  - "*/sp1/program/target/*"
+  - "*/risc0/methods/target/*"
+  - "*/methods/guest/target/*"
+
+  # Configuration and metadata files
+  - "*/Cargo.toml"
+  - "*/build.rs"
+
+# Additional source directories to include (relative to project root)
+source-dir:
+  - "crates/"
+  - "src/"
+
+# Excl-line: Lines containing this string will be excluded from coverage
+excl-line:
+  - "GRCOV_EXCL_LINE"
+  - "unreachable!"
+  - "panic!"
+
+# Excl-start/stop: Mark blocks to exclude from coverage
+excl-start: "GRCOV_EXCL_START"
+excl-stop: "GRCOV_EXCL_STOP"
+
+# Excl-br-line: Lines containing this string will be excluded from branch coverage
+excl-br-line: "GRCOV_EXCL_BR_LINE"
+
+# Excl-br-start/stop: Mark blocks to exclude from branch coverage
+excl-br-start: "GRCOV_EXCL_BR_START"
+excl-br-stop: "GRCOV_EXCL_BR_STOP"

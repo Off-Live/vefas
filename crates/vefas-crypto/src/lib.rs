@@ -1,12 +1,12 @@
 //! # VEFAS Crypto
 //!
 //! Cryptographic implementations and trait definitions for VEFAS (Verifiable Execution Framework for Agents).
-//! This crate provides both platform-agnostic traits and native implementations that work in both
+//! This crate provides platform-agnostic traits and shared utilities that work seamlessly in both
 //! std (host) and no_std (guest) environments.
 //!
 //! ## Design Principles
 //!
-//! - **Dual Environment**: Works in both std (host) and no_std (guest) environments
+//! - **Strictly no_std**: Built for constrained environments, works everywhere
 //! - **Platform Agnostic**: Traits work across all zkVM platforms
 //! - **Production Ready**: Battle-tested crypto implementations from RustCrypto
 //! - **Performance Focused**: Optimized for zkVM precompiles when available
@@ -15,19 +15,22 @@
 //! ## Architecture
 //!
 //! ```text
-//! VefasCrypto
+//! VefasCrypto (no_std + alloc)
 //! ├── Traits (platform-agnostic interfaces)
 //! ├── Types (cryptographic data structures)
-//! ├── Native Implementation (std and no_std)
-//! └── Platform Implementations (SP1, RISC0)
+//! ├── Validation (shared parsing and validation)
+//! ├── Input Parsing (safe bounds-checked parsing)
+//! └── Constants (cryptographic parameters)
 //! ```
 //!
-//! ## Features
+//! ## Usage
 //!
-//! - `std` (default): Full standard library support for host environments
-//! - `no_std`: Constrained environment support for guest/zkVM environments
+//! This crate is designed to be imported by both host (std) and guest (no_std) environments:
+//! - Host applications can use all functionality seamlessly
+//! - Guest programs in SP1/RISC0 zkVMs can use the same interfaces
+//! - Shared validation and parsing logic ensures consistency
 
-#![cfg_attr(not(feature = "std"), no_std)]
+#![no_std]
 #![forbid(unsafe_code)]
 #![deny(
     rust_2018_idioms,
@@ -38,24 +41,22 @@
 )]
 #![warn(missing_debug_implementations)]
 
-#[cfg(not(feature = "std"))]
 extern crate alloc;
 
-#[cfg(not(feature = "std"))]
-use alloc::vec::Vec;
-
-#[cfg(feature = "std")]
-use std::vec::Vec;
-
+// Note: alloc types are available through submodules as needed
 use vefas_types::{
-    tls::{CipherSuite, SessionKeys},
     VefasResult,
+    tls::{CipherSuite, SessionKeys},
 };
 
 pub mod traits;
 pub mod types;
 pub mod error;
 pub mod constants;
+pub mod input_validation;
+pub mod tls_parser;
+pub mod validation;
+pub mod http_utils;
 
 // Re-export new trait structure for convenience
 pub use traits::{
@@ -69,6 +70,14 @@ pub use types::{
 pub use error::{CryptoError, CryptoResult};
 pub use constants::*;
 
+// Re-export utility modules for convenience
+pub use input_validation::{SafeParser, validate_tls_record_header, validate_handshake_header};
+pub use tls_parser::{parse_handshake_header, parse_server_cipher_suite, parse_server_hello_key_share,
+                     hkdf_expand_label, decrypt_application_record, compute_transcript_hash};
+pub use validation::{validate_x509_certificate, validate_certificate_chain_structure,
+                     validate_certificate_message, domain_matches};
+pub use http_utils::{parse_http_data, HttpData, hex_lower};
+
 /// Verify TLS 1.3 session keys derivation
 pub fn verify_session_keys(
     provider: &impl VefasCrypto,
@@ -76,7 +85,6 @@ pub fn verify_session_keys(
     shared_secret: &[u8],
     cipher_suite: CipherSuite,
 ) -> VefasResult<SessionKeys> {
-    use crate::traits::{Hash, Kdf};
 
     // Minimal support for TLS_AES_128_GCM_SHA256 and TLS_AES_256_GCM_SHA384
     match cipher_suite {
@@ -166,19 +174,11 @@ pub fn derive_aead_nonce(static_iv: &[u8], sequence_number: u64) -> VefasResult<
     Ok(out)
 }
 
-/// Validate certificate chain for TLS connection
-///
-/// Note: Certificate validation is not implemented in the new trait structure
-/// as it requires complex X.509 parsing and validation logic that should be
-/// handled by a dedicated certificate validation crate.
-pub fn validate_certificate_chain(
-    _provider: &impl VefasCrypto,
-    _chain: &CertificateChain,
-    _server_name: &str,
-    _timestamp: u64,
-) -> VefasResult<bool> {
-    // TODO: Implement certificate validation with a proper X.509 library
-    // For now, return Ok(true) as a placeholder
-    Ok(true)
-}
+// Certificate chain validation is handled by the production-grade functions in validation.rs:
+// - validate_certificate_chain_structure() for structural validation
+// - validate_certificate_domain_binding() for domain binding validation
+// - validate_x509_certificate() for individual certificate validation
+//
+// Full certificate chain validation (including CA trust, OCSP, etc.) would require
+// integrating a dedicated X.509 library and is marked as future work.
 

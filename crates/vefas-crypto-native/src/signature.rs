@@ -14,11 +14,11 @@ use ecdsa::signature::{Verifier, SignatureEncoding};
 use k256::{SecretKey as K256SecretKey, PublicKey as K256PublicKey};
 use k256::ecdsa::{SigningKey as K256SigningKey, VerifyingKey as K256VerifyingKey, Signature as K256Signature};
 
-use ed25519_dalek::{SigningKey as Ed25519SigningKey, VerifyingKey as Ed25519VerifyingKey, Signature as Ed25519Signature, Signer, SecretKey as Ed25519SecretKey};
+use ed25519_dalek::{SigningKey as Ed25519SigningKey, VerifyingKey as Ed25519VerifyingKey, Signature as Ed25519Signature, Signer};
 
-use rsa::{RsaPrivateKey, RsaPublicKey, Pkcs1v15Sign, Pss};
+use rsa::{RsaPrivateKey, RsaPublicKey};
 use rsa::pkcs1::{EncodeRsaPrivateKey, EncodeRsaPublicKey, DecodeRsaPrivateKey, DecodeRsaPublicKey};
-use rsa::signature::{Keypair, RandomizedSigner, Verifier as RsaVerifier};
+use rsa::signature::RandomizedSigner;
 
 use sha2::Sha256;
 use rand_core::{OsRng, RngCore};

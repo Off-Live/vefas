@@ -18,10 +18,10 @@ async fn get_request_tls13_smoke_test() {
     // Production-grade assertions that are robust across runs
     assert_eq!(bundle.domain, "example.com");
     assert_eq!(bundle.expected_status, 200);
-    assert!(!bundle.client_hello.is_empty());
-    assert!(!bundle.server_hello.is_empty());
-    assert!(!bundle.encrypted_request.is_empty());
-    assert!(!bundle.encrypted_response.is_empty());
+    assert!(!bundle.client_hello().unwrap().is_empty());
+    assert!(!bundle.server_hello().unwrap().is_empty());
+    assert!(!bundle.encrypted_request().unwrap().is_empty());
+    assert!(!bundle.encrypted_response().unwrap().is_empty());
     assert!(bundle.is_tls13_session());
 }
 

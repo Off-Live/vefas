@@ -68,20 +68,19 @@ fn main() {
 
 /// Create a mock VEFAS canonical bundle for demonstration purposes
 fn create_mock_bundle() -> VefasCanonicalBundle {
-    VefasCanonicalBundle {
-        version: 1,
-        client_hello: vec![0x16, 0x03, 0x03, 0x00, 0x30], // Mock ClientHello
-        server_hello: vec![0x16, 0x03, 0x03, 0x00, 0x30], // Mock ServerHello
-        certificate_msg: vec![0x16, 0x03, 0x03, 0x00, 0x20], // Mock Certificate
-        certificate_verify_msg: vec![0x16, 0x03, 0x03, 0x00, 0x10], // Mock CertificateVerify
-        server_finished_msg: vec![0x16, 0x03, 0x03, 0x00, 0x10], // Mock ServerFinished
-        client_private_key: [1u8; 32], // Mock private key
-        certificate_chain: vec![vec![0x30, 0x82, 0x01, 0x00]], // Mock certificate chain
-        encrypted_request: b"GET / HTTP/1.1\r\nHost: example.com\r\n\r\n".to_vec(),
-        encrypted_response: b"HTTP/1.1 200 OK\r\n\r\nHello World".to_vec(),
-        domain: "example.com".to_string(),
-        timestamp: 1678886400,
-        expected_status: 200,
-        verifier_nonce: [42u8; 32],
-    }
+    VefasCanonicalBundle::new(
+        vec![0x16, 0x03, 0x03, 0x00, 0x30], // Mock ClientHello
+        vec![0x16, 0x03, 0x03, 0x00, 0x30], // Mock ServerHello
+        vec![0x16, 0x03, 0x03, 0x00, 0x20], // Mock Certificate
+        vec![0x16, 0x03, 0x03, 0x00, 0x10], // Mock CertificateVerify
+        vec![0x16, 0x03, 0x03, 0x00, 0x10], // Mock ServerFinished
+        [1u8; 32], // Mock private key
+        vec![vec![0x30, 0x82, 0x01, 0x00]], // Mock certificate chain
+        b"GET / HTTP/1.1\r\nHost: example.com\r\n\r\n".to_vec(),
+        b"HTTP/1.1 200 OK\r\n\r\nHello World".to_vec(),
+        "example.com".to_string(),
+        1678886400,
+        200,
+        [42u8; 32],
+    ).expect("Failed to create mock bundle")
 }

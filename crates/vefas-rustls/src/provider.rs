@@ -11,21 +11,20 @@ use crate::{ProviderConfig, EphemeralCaptureHandle, EphemeralSeed};
 
 #[derive(Debug)]
 struct CapturingX25519Group {
-    label: &'static str,
+    _label: &'static str,
     capture: EphemeralCaptureHandle,
     seed: Option<EphemeralSeed>,
 }
 
 impl CapturingX25519Group {
     fn new(capture: EphemeralCaptureHandle, seed: Option<EphemeralSeed>) -> Self {
-        Self { label: "X25519", capture, seed }
+        Self { _label: "X25519", capture, seed }
     }
 }
 
 struct CapturingX25519Kx {
     secret: [u8; 32],
     pubkey: [u8; 32],
-    capture: EphemeralCaptureHandle,
 }
 
 impl Drop for CapturingX25519Kx {
@@ -78,7 +77,6 @@ impl SupportedKxGroup for CapturingX25519Group {
         let kx = CapturingX25519Kx {
             secret,
             pubkey,
-            capture: Arc::clone(&self.capture),
         };
         Ok(Box::new(kx))
     }

@@ -3,7 +3,7 @@
 extern crate alloc;
 
 use alloc::string::String;
-use vefas_types::errors::{VefasError, TlsErrorType, HttpErrorType, CryptoErrorType};
+use vefas_types::errors::{VefasError, TlsErrorType, HttpErrorType};
 
 /// Result type for VEFAS Core operations
 pub type Result<T> = core::result::Result<T, VefasCoreError>;
@@ -145,6 +145,43 @@ impl From<url::ParseError> for VefasCoreError {
 impl From<rustls::Error> for VefasCoreError {
     fn from(err: rustls::Error) -> Self {
             Self::TlsError(err.to_string())
+    }
+}
+
+impl From<VefasError> for VefasCoreError {
+    fn from(err: VefasError) -> Self {
+        match err {
+            VefasError::InvalidInput { field, reason } => {
+                Self::ValidationError(format!("Invalid input for {}: {}", field, reason))
+            },
+            VefasError::TlsError { error_type: _, message } => {
+                Self::TlsError(message)
+            },
+            VefasError::HttpError { error_type: _, message } => {
+                Self::HttpError(message)
+            },
+            VefasError::CryptoError { error_type: _, message } => {
+                Self::VerificationError(message)
+            },
+            VefasError::CertificateError { error_type: _, message } => {
+                Self::VerificationError(message)
+            },
+            VefasError::SerializationError { message } => {
+                Self::SerializationError(message)
+            },
+            VefasError::ZkvmError { platform: _, message } => {
+                Self::Internal(message)
+            },
+            VefasError::MemoryError { .. } => {
+                Self::Internal("Memory error".to_string())
+            },
+            VefasError::VersionMismatch { .. } => {
+                Self::ValidationError("Version mismatch".to_string())
+            },
+            VefasError::Internal { message } => {
+                Self::Internal(message)
+            },
+        }
     }
 }
 

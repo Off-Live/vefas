@@ -12,7 +12,7 @@
 //!
 //! No mocks, no shortcuts - this is production-grade zkVM integration.
 
-use vefas_types::{VefasCanonicalBundle, VefasResult, VefasError};
+use vefas_types::{VefasCanonicalBundle, VefasResult, VefasError, compression::CompressedBundle, VefasProofClaim, VefasPerformanceMetrics, VefasExecutionMetadata};
 // VefasCrypto trait import removed - zkVM integration is handled directly through VefasRisc0Prover
 use risc0_zkvm::{default_prover, ExecutorEnv, Receipt, default_executor};
 use serde::{Serialize, Deserialize};
@@ -33,48 +33,8 @@ pub struct VefasRisc0Proof {
     pub execution_metadata: VefasExecutionMetadata,
 }
 
-/// VEFAS proof claim - what the proof actually verifies
-/// This matches the exact structure used in the RISC0 guest program
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct VefasProofClaim {
-    /// Domain name from the TLS connection
-    pub domain: String,
-    /// HTTP method that was executed
-    pub method: String,
-    /// HTTP path that was accessed
-    pub path: String,
-    /// SHA256 hash of the complete HTTP request
-    pub request_hash: String,
-    /// SHA256 hash of the complete HTTP response
-    pub response_hash: String,
-    /// Unix timestamp when the request was executed
-    pub timestamp: u64,
-    /// HTTP status code received
-    pub status_code: u16,
-    /// TLS version string (e.g., "1.3")
-    pub tls_version: String,
-    /// Cipher suite name (e.g., "TLS_AES_128_GCM_SHA256")
-    pub cipher_suite: String,
-    /// SHA256 hash of concatenated certificate chain (DER)
-    pub certificate_chain_hash: String,
-    /// SHA256 hash of handshake transcript up to CertificateVerify
-    pub handshake_transcript_hash: String,
-}
 
-/// Execution metadata for VEFAS proofs
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct VefasExecutionMetadata {
-    /// Number of cycles executed in RISC0 zkVM
-    pub cycles: u64,
-    /// Memory usage in bytes
-    pub memory_usage: u64,
-    /// Total execution time in milliseconds
-    pub execution_time_ms: u64,
-    /// Proof generation time in milliseconds
-    pub proof_time_ms: u64,
-    /// Platform identifier
-    pub platform: String,
-}
+
 
 /// RISC0 VEFAS prover - production-grade zkVM integration
 ///
@@ -110,6 +70,9 @@ impl VefasRisc0Prover {
     /// 2. HTTP request/response integrity
     /// 3. Timestamp and domain binding
     ///
+    /// This method supports both compressed and uncompressed bundles.
+    /// The guest program will automatically handle decompression if needed.
+    ///
     /// Implementation follows the official RISC0 examples pattern:
     /// 1. Create ExecutorEnv and write bundle data
     /// 2. Generate proof with default_prover()
@@ -121,10 +84,22 @@ impl VefasRisc0Prover {
         // Validate bundle before processing
         bundle.validate()?;
 
-        // Create executor environment with bundle data
+        // Determine if we should compress the bundle for better performance
+        let input_data = if self.should_compress_bundle(bundle)? {
+            println!("RISC0: Compressing bundle for better performance");
+            let compressed = self.compress_bundle(bundle)?;
+            bincode::serialize(&compressed)
+                .map_err(|e| VefasError::serialization_error(&format!("Failed to serialize compressed bundle: {}", e)))?
+        } else {
+            println!("RISC0: Using uncompressed bundle");
+            bincode::serialize(bundle)
+                .map_err(|e| VefasError::serialization_error(&format!("Failed to serialize bundle: {}", e)))?
+        };
+
+        // Create executor environment with serialized bundle data
         let env = ExecutorEnv::builder()
-            .write(bundle)
-            .map_err(|e| VefasError::zkvm_error("risc0", &format!("Failed to write bundle to executor: {}", e)))?
+            .write(&input_data)
+            .map_err(|e| VefasError::zkvm_error("risc0", &format!("Failed to write bundle data to executor: {}", e)))?
             .build()
             .map_err(|e| VefasError::zkvm_error("risc0", &format!("Failed to build executor environment: {}", e)))?;
 
@@ -141,14 +116,17 @@ impl VefasRisc0Prover {
         // Extract claim from journal
         let claim = self.extract_claim_from_receipt(&receipt)?;
 
-        // Get execution metadata
+        // Get execution metadata with detailed performance metrics
         let execution_metadata = VefasExecutionMetadata {
-            cycles: self.get_execution_cycles_from_receipt(&receipt),
-            memory_usage: self.get_memory_usage_from_receipt(&receipt),
+            cycles: claim.performance.total_cycles,
+            memory_usage: claim.performance.memory_usage as u64,
             execution_time_ms: start_time.elapsed().as_millis() as u64,
             proof_time_ms: proof_time.as_millis() as u64,
             platform: "risc0".to_string(),
         };
+
+        // Log detailed performance breakdown
+        self.log_performance_metrics(&claim.performance);
 
         // Serialize receipt
         let receipt_data = bincode::serialize(&receipt)
@@ -189,21 +167,94 @@ impl VefasRisc0Prover {
         Ok(claim)
     }
 
-    /// Get execution cycles from RISC0 receipt
-    fn get_execution_cycles_from_receipt(&self, _receipt: &Receipt) -> u64 {
-        // RISC0 cycle counting is handled in the guest program using env::cycle_count()
-        // For now, return a reasonable estimate - in production, this would extract
-        // the actual cycle count from RISC0's execution metadata
-        800_000
+    /// Determine if bundle should be compressed for better performance
+    fn should_compress_bundle(&self, bundle: &VefasCanonicalBundle) -> VefasResult<bool> {
+        // Get estimated bundle size
+        let estimated_size = bundle.memory_footprint();
+
+        // Compress if bundle is larger than 10KB and likely to benefit
+        Ok(estimated_size > 10_240)
     }
 
-    /// Get memory usage from RISC0 receipt
-    fn get_memory_usage_from_receipt(&self, receipt: &Receipt) -> u64 {
-        // Estimate memory usage based on receipt size and RISC0 VM overhead
-        let journal_size = receipt.journal.bytes.len() as u64;
-        let seal_estimate = receipt.journal.bytes.len() as u64; // Rough estimate of seal size
-        let vm_overhead = 2 * 1024 * 1024; // 2MB for RISC0 VM overhead
-        vm_overhead + journal_size + seal_estimate
+    /// Compress bundle using LZSS compression
+    fn compress_bundle(&self, bundle: &VefasCanonicalBundle) -> VefasResult<CompressedBundle> {
+        // Serialize bundle first
+        let bundle_data = bincode::serialize(bundle)
+            .map_err(|e| VefasError::serialization_error(&format!("Failed to serialize bundle for compression: {}", e)))?;
+
+        // Compress using LZSS
+        let compressed = vefas_types::compression::BundleCompressor::compress(&bundle_data)?;
+
+        println!("RISC0: Compressed bundle from {} to {} bytes ({:.1}% ratio)",
+            compressed.original_size,
+            compressed.compressed_data.len(),
+            compressed.compression_ratio()
+        );
+
+        Ok(compressed)
+    }
+
+    /// Log detailed performance metrics
+    fn log_performance_metrics(&self, metrics: &VefasPerformanceMetrics) {
+        println!("\n=== RISC0 Performance Metrics ===");
+        println!("Total cycles: {}", metrics.total_cycles);
+        println!("Breakdown by operation:");
+
+        if metrics.decompression_cycles > 0 {
+            println!("  Decompression: {} cycles ({:.1}%)",
+                metrics.decompression_cycles,
+                (metrics.decompression_cycles as f64 / metrics.total_cycles as f64) * 100.0
+            );
+        }
+
+        println!("  Validation: {} cycles ({:.1}%)",
+            metrics.validation_cycles,
+            (metrics.validation_cycles as f64 / metrics.total_cycles as f64) * 100.0
+        );
+
+        println!("  Handshake: {} cycles ({:.1}%)",
+            metrics.handshake_cycles,
+            (metrics.handshake_cycles as f64 / metrics.total_cycles as f64) * 100.0
+        );
+
+        println!("  Certificate validation: {} cycles ({:.1}%)",
+            metrics.certificate_validation_cycles,
+            (metrics.certificate_validation_cycles as f64 / metrics.total_cycles as f64) * 100.0
+        );
+
+        println!("  Key derivation: {} cycles ({:.1}%)",
+            metrics.key_derivation_cycles,
+            (metrics.key_derivation_cycles as f64 / metrics.total_cycles as f64) * 100.0
+        );
+
+        println!("  Decryption: {} cycles ({:.1}%)",
+            metrics.decryption_cycles,
+            (metrics.decryption_cycles as f64 / metrics.total_cycles as f64) * 100.0
+        );
+
+        println!("  HTTP parsing: {} cycles ({:.1}%)",
+            metrics.http_parsing_cycles,
+            (metrics.http_parsing_cycles as f64 / metrics.total_cycles as f64) * 100.0
+        );
+
+        println!("  Crypto operations: {} cycles ({:.1}%)",
+            metrics.crypto_operations_cycles,
+            (metrics.crypto_operations_cycles as f64 / metrics.total_cycles as f64) * 100.0
+        );
+
+        println!("Memory usage: {} bytes ({:.1} KB)",
+            metrics.memory_usage,
+            metrics.memory_usage as f64 / 1024.0
+        );
+
+        if let Some(ratio) = metrics.compression_ratio {
+            println!("Compression ratio: {:.1}%", ratio);
+            if let (Some(original), Some(decompressed)) = (metrics.original_bundle_size, metrics.decompressed_bundle_size) {
+                println!("Bundle size: {} -> {} bytes", original, decompressed);
+            }
+        }
+
+        println!("================================\n");
     }
 }
 
@@ -246,22 +297,35 @@ mod tests {
 
     /// Create a mock VEFAS canonical bundle for testing
     fn create_mock_bundle() -> VefasCanonicalBundle {
-        VefasCanonicalBundle {
-            version: 1,
-            client_hello: vec![0x16, 0x03, 0x03, 0x00, 0x30], // Mock ClientHello
-            server_hello: vec![0x16, 0x03, 0x03, 0x00, 0x30], // Mock ServerHello
-            certificate_msg: vec![0x16, 0x03, 0x03, 0x00, 0x20], // Mock Certificate
-            certificate_verify_msg: vec![0x16, 0x03, 0x03, 0x00, 0x10], // Mock CertificateVerify
-            server_finished_msg: vec![0x16, 0x03, 0x03, 0x00, 0x10], // Mock ServerFinished
-            client_private_key: [1u8; 32], // Mock private key
-            certificate_chain: vec![vec![0x30, 0x82, 0x01, 0x00]], // Mock certificate chain
-            encrypted_request: b"GET / HTTP/1.1\r\nHost: example.com\r\n\r\n".to_vec(),
-            encrypted_response: b"HTTP/1.1 200 OK\r\n\r\nHello World".to_vec(),
-            domain: "example.com".to_string(),
-            timestamp: 1678886400,
-            expected_status: 200,
-            verifier_nonce: [42u8; 32],
-        }
+        VefasCanonicalBundle::new(
+            vec![0x16, 0x03, 0x03, 0x00, 0x30], // Mock ClientHello
+            vec![0x16, 0x03, 0x03, 0x00, 0x30], // Mock ServerHello
+            vec![0x16, 0x03, 0x03, 0x00, 0x20], // Mock Certificate
+            vec![0x16, 0x03, 0x03, 0x00, 0x10], // Mock CertificateVerify
+            vec![0x16, 0x03, 0x03, 0x00, 0x10], // Mock ServerFinished
+            [1u8; 32], // Mock private key
+            vec![vec![0x30, 0x82, 0x01, 0x00]], // Mock certificate chain
+            {
+                // Create properly formatted TLS ApplicationData record for encrypted_request
+                let mut req = vec![0x17, 0x03, 0x03]; // content_type=23 (ApplicationData), version=0x0303
+                let payload = b"GET / HTTP/1.1\r\nHost: example.com\r\n\r\n";
+                req.extend_from_slice(&(payload.len() as u16).to_be_bytes()); // length
+                req.extend_from_slice(payload);
+                req
+            }, // encrypted_request
+            {
+                // Create properly formatted TLS ApplicationData record for encrypted_response
+                let mut resp = vec![0x17, 0x03, 0x03]; // content_type=23 (ApplicationData), version=0x0303
+                let payload = b"HTTP/1.1 200 OK\r\n\r\nHello World";
+                resp.extend_from_slice(&(payload.len() as u16).to_be_bytes()); // length
+                resp.extend_from_slice(payload);
+                resp
+            }, // encrypted_response
+            "example.com".to_string(),
+            1678886400,
+            200,
+            [42u8; 32],
+        ).unwrap()
     }
 
     #[test]

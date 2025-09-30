@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use uuid::Uuid;
 use chrono::{DateTime, Utc};
-use vefas_types::VefasCanonicalBundle;
+use vefas_types::{VefasCanonicalBundle, VefasProofClaim};
 
 
 /// HTTP methods supported by the gateway
@@ -109,32 +109,8 @@ pub struct HttpResponseData {
     pub body: String,
 }
 
-/// Cryptographic proof claim
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ProofClaim {
-    /// Domain that was accessed
-    pub domain: String,
-    /// HTTP method used
-    pub method: String,
-    /// Request path
-    pub path: String,
-    /// Hash of the HTTP request
-    pub request_hash: String,
-    /// Hash of the HTTP response
-    pub response_hash: String,
-    /// Unix timestamp of the request
-    pub timestamp: u64,
-    /// HTTP status code received
-    pub status_code: u16,
-    /// TLS version (e.g., "1.3")
-    pub tls_version: String,
-    /// Cipher suite (e.g., "TLS_AES_128_GCM_SHA256")
-    pub cipher_suite: String,
-    /// Hash of certificate chain (DER concatenation, SHA-256 hex)
-    pub certificate_chain_hash: String,
-    /// Hash of handshake transcript up to CertificateVerify (SHA-256 hex)
-    pub handshake_transcript_hash: String,
-}
+/// Cryptographic proof claim (unified type from vefas-types)
+pub type ProofClaim = VefasProofClaim;
 
 /// Execution metadata from zkVM
 #[derive(Debug, Clone, Serialize, Deserialize)]

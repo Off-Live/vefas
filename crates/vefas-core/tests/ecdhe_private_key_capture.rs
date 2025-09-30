@@ -81,7 +81,7 @@ fn bundle_uses_captured_ephemeral_scalar_when_available() {
             let keylog = VefasKeyLog::new();
             let mut builder = BundleBuilder::new();
             let bundle = builder.from_session_data(&session, &http, &keylog).expect("bundle");
-            assert_eq!(bundle.client_private_key, expected);
+            assert_eq!(bundle.client_private_key().unwrap(), expected);
         }
         Err(_) => {
             let expected = seed;
@@ -90,7 +90,7 @@ fn bundle_uses_captured_ephemeral_scalar_when_available() {
             let keylog = VefasKeyLog::new();
             let mut builder = BundleBuilder::new();
             let bundle = builder.from_session_data(&session, &http, &keylog).expect("bundle");
-            assert_eq!(bundle.client_private_key, expected);
+            assert_eq!(bundle.client_private_key().unwrap(), expected);
         }
     }
 }
@@ -103,7 +103,7 @@ fn bundle_falls_back_without_captured_scalar() {
     let keylog = VefasKeyLog::new();
     let mut builder = BundleBuilder::new();
     let bundle = builder.from_session_data(&session, &http, &keylog).expect("bundle");
-    assert_eq!(bundle.client_private_key.len(), 32);
+    assert_eq!(bundle.client_private_key().unwrap().len(), 32);
 }
 
 

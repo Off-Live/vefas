@@ -20,6 +20,7 @@ use crate::{
     MAX_DOMAIN_LENGTH,
     VEFAS_PROTOCOL_VERSION,
     utils::format_decimal,
+    compression::{BundleCompressor, CompressedBundle, CompressionStats},
 };
 
 /// Maximum size for individual handshake messages
@@ -39,11 +40,52 @@ pub const MAX_CERTIFICATE_CHAIN_SIZE: usize = 64 * 1024; // 64KB
 /// The bundle represents the core innovation of the host-rustls + guest-verifier
 /// architecture, enabling orders of magnitude cheaper proofs through separation
 /// of TLS implementation (host) from verification (guest).
+///
+/// ## Compression Support
+///
+/// The bundle supports optional LZSS compression to reduce zkVM input sizes by 30-50%.
+/// Compression is automatically applied when beneficial during bundle creation.
+/// The bundle can be stored and processed in either compressed or uncompressed form
+/// with transparent decompression for guest programs.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct VefasCanonicalBundle {
     /// Protocol version for compatibility checking
     pub version: u16,
 
+    /// Compression format version (0 = uncompressed, 1+ = compressed)
+    pub compression_version: u16,
+
+    /// Bundle storage format
+    pub storage: BundleStorage,
+
+    // Verification metadata (always uncompressed for quick access)
+    /// Target domain name for certificate validation
+    pub domain: String,
+    /// Unix timestamp when session was captured
+    pub timestamp: u64,
+    /// Expected HTTP status code
+    pub expected_status: u16,
+    /// Random nonce for proof uniqueness
+    pub verifier_nonce: [u8; 32],
+}
+
+/// Bundle storage format supporting both compressed and uncompressed data
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum BundleStorage {
+    /// Uncompressed bundle data
+    Uncompressed(UncompressedBundleData),
+    /// Compressed bundle data with compression metadata
+    Compressed {
+        /// Compressed bundle data
+        compressed_data: CompressedBundle,
+        /// Compression statistics for analysis
+        compression_stats: CompressionStats,
+    },
+}
+
+/// Uncompressed bundle data
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct UncompressedBundleData {
     // Raw handshake messages (exact bytes from wire)
     /// ClientHello message (raw bytes)
     pub client_hello: Vec<u8>,
@@ -67,20 +109,10 @@ pub struct VefasCanonicalBundle {
     pub encrypted_request: Vec<u8>,
     /// Encrypted HTTP response (TLS record format)
     pub encrypted_response: Vec<u8>,
-
-    // Verification metadata
-    /// Target domain name for certificate validation
-    pub domain: String,
-    /// Unix timestamp when session was captured
-    pub timestamp: u64,
-    /// Expected HTTP status code
-    pub expected_status: u16,
-    /// Random nonce for proof uniqueness
-    pub verifier_nonce: [u8; 32],
 }
 
 impl VefasCanonicalBundle {
-    /// Create a new canonical bundle with validation
+    /// Create a new canonical bundle with validation (uncompressed)
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         client_hello: Vec<u8>,
@@ -97,8 +129,7 @@ impl VefasCanonicalBundle {
         expected_status: u16,
         verifier_nonce: [u8; 32],
     ) -> VefasResult<Self> {
-        let bundle = Self {
-            version: VEFAS_PROTOCOL_VERSION,
+        let uncompressed_data = UncompressedBundleData {
             client_hello,
             server_hello,
             certificate_msg,
@@ -108,6 +139,12 @@ impl VefasCanonicalBundle {
             certificate_chain,
             encrypted_request,
             encrypted_response,
+        };
+
+        let bundle = Self {
+            version: VEFAS_PROTOCOL_VERSION,
+            compression_version: 0, // Uncompressed
+            storage: BundleStorage::Uncompressed(uncompressed_data),
             domain,
             timestamp,
             expected_status,
@@ -118,11 +155,200 @@ impl VefasCanonicalBundle {
         Ok(bundle)
     }
 
+    /// Create a new canonical bundle with automatic compression
+    #[allow(clippy::too_many_arguments)]
+    pub fn new_with_compression(
+        client_hello: Vec<u8>,
+        server_hello: Vec<u8>,
+        certificate_msg: Vec<u8>,
+        certificate_verify_msg: Vec<u8>,
+        server_finished_msg: Vec<u8>,
+        client_private_key: [u8; 32],
+        certificate_chain: Vec<Vec<u8>>,
+        encrypted_request: Vec<u8>,
+        encrypted_response: Vec<u8>,
+        domain: String,
+        timestamp: u64,
+        expected_status: u16,
+        verifier_nonce: [u8; 32],
+    ) -> VefasResult<Self> {
+        let uncompressed_data = UncompressedBundleData {
+            client_hello,
+            server_hello,
+            certificate_msg,
+            certificate_verify_msg,
+            server_finished_msg,
+            client_private_key,
+            certificate_chain,
+            encrypted_request,
+            encrypted_response,
+        };
+
+        // Serialize uncompressed data to check if compression would be beneficial
+        let serialized_data = serde_json::to_vec(&uncompressed_data)
+            .map_err(|e| VefasError::serialization_error(&format!("Failed to serialize bundle data: {}", e)))?;
+
+        // Apply compression if beneficial
+        let (storage, compression_version) = if BundleCompressor::should_compress(&serialized_data) {
+            match BundleCompressor::compress(&serialized_data) {
+                Ok(compressed_bundle) => {
+                    let stats = BundleCompressor::compression_stats(&serialized_data, &compressed_bundle);
+                    (
+                        BundleStorage::Compressed {
+                            compressed_data: compressed_bundle,
+                            compression_stats: stats,
+                        },
+                        1, // Compressed format version
+                    )
+                },
+                Err(_) => {
+                    // If compression fails, fall back to uncompressed
+                    (BundleStorage::Uncompressed(uncompressed_data), 0)
+                },
+            }
+        } else {
+            (BundleStorage::Uncompressed(uncompressed_data), 0)
+        };
+
+        let bundle = Self {
+            version: VEFAS_PROTOCOL_VERSION,
+            compression_version,
+            storage,
+            domain,
+            timestamp,
+            expected_status,
+            verifier_nonce,
+        };
+
+        bundle.validate()?;
+        Ok(bundle)
+    }
+
+    /// Get bundle data (decompressing if necessary)
+    pub fn get_bundle_data(&self) -> VefasResult<UncompressedBundleData> {
+        match &self.storage {
+            BundleStorage::Uncompressed(data) => Ok(data.clone()),
+            BundleStorage::Compressed { compressed_data, .. } => {
+                let decompressed_bytes = BundleCompressor::decompress(compressed_data)?;
+                serde_json::from_slice(&decompressed_bytes)
+                    .map_err(|e| VefasError::serialization_error(&format!("Failed to deserialize decompressed bundle: {}", e)))
+            },
+        }
+    }
+
+    /// Check if bundle is compressed
+    pub fn is_compressed(&self) -> bool {
+        matches!(self.storage, BundleStorage::Compressed { .. })
+    }
+
+    /// Get compression statistics if bundle is compressed
+    pub fn compression_stats(&self) -> Option<&CompressionStats> {
+        match &self.storage {
+            BundleStorage::Compressed { compression_stats, .. } => Some(compression_stats),
+            BundleStorage::Uncompressed(_) => None,
+        }
+    }
+
+    /// Convert to compressed format if beneficial
+    pub fn try_compress(&mut self) -> VefasResult<bool> {
+        if self.is_compressed() {
+            return Ok(false); // Already compressed
+        }
+
+        let data = self.get_bundle_data()?;
+        let serialized_data = serde_json::to_vec(&data)
+            .map_err(|e| VefasError::serialization_error(&format!("Failed to serialize bundle data: {}", e)))?;
+
+        if BundleCompressor::should_compress(&serialized_data) {
+            match BundleCompressor::compress(&serialized_data) {
+                Ok(compressed_bundle) => {
+                    let stats = BundleCompressor::compression_stats(&serialized_data, &compressed_bundle);
+                    self.storage = BundleStorage::Compressed {
+                        compressed_data: compressed_bundle,
+                        compression_stats: stats,
+                    };
+                    self.compression_version = 1;
+                    Ok(true)
+                },
+                Err(_) => Ok(false), // Compression failed
+            }
+        } else {
+            Ok(false) // Compression not beneficial
+        }
+    }
+
+    /// Convert to uncompressed format
+    pub fn decompress(&mut self) -> VefasResult<()> {
+        if !self.is_compressed() {
+            return Ok(()); // Already uncompressed
+        }
+
+        let data = self.get_bundle_data()?;
+        self.storage = BundleStorage::Uncompressed(data);
+        self.compression_version = 0;
+        Ok(())
+    }
+
+    /// Convenience methods for accessing bundle fields (with transparent decompression)
+
+    /// Get ClientHello message (decompressing if necessary)
+    pub fn client_hello(&self) -> VefasResult<Vec<u8>> {
+        Ok(self.get_bundle_data()?.client_hello)
+    }
+
+    /// Get ServerHello message (decompressing if necessary)
+    pub fn server_hello(&self) -> VefasResult<Vec<u8>> {
+        Ok(self.get_bundle_data()?.server_hello)
+    }
+
+    /// Get Certificate message (decompressing if necessary)
+    pub fn certificate_msg(&self) -> VefasResult<Vec<u8>> {
+        Ok(self.get_bundle_data()?.certificate_msg)
+    }
+
+    /// Get CertificateVerify message (decompressing if necessary)
+    pub fn certificate_verify_msg(&self) -> VefasResult<Vec<u8>> {
+        Ok(self.get_bundle_data()?.certificate_verify_msg)
+    }
+
+    /// Get Server Finished message (decompressing if necessary)
+    pub fn server_finished_msg(&self) -> VefasResult<Vec<u8>> {
+        Ok(self.get_bundle_data()?.server_finished_msg)
+    }
+
+    /// Get client ephemeral private key (decompressing if necessary)
+    pub fn client_private_key(&self) -> VefasResult<[u8; 32]> {
+        Ok(self.get_bundle_data()?.client_private_key)
+    }
+
+    /// Get certificate chain (decompressing if necessary)
+    pub fn certificate_chain(&self) -> VefasResult<Vec<Vec<u8>>> {
+        Ok(self.get_bundle_data()?.certificate_chain)
+    }
+
+    /// Get encrypted HTTP request (decompressing if necessary)
+    pub fn encrypted_request(&self) -> VefasResult<Vec<u8>> {
+        Ok(self.get_bundle_data()?.encrypted_request)
+    }
+
+    /// Get encrypted HTTP response (decompressing if necessary)
+    pub fn encrypted_response(&self) -> VefasResult<Vec<u8>> {
+        Ok(self.get_bundle_data()?.encrypted_response)
+    }
+
     /// Validate the canonical bundle for consistency and constraints
     pub fn validate(&self) -> VefasResult<()> {
         // Check protocol version
         if self.version != VEFAS_PROTOCOL_VERSION {
             return Err(VefasError::version_mismatch(VEFAS_PROTOCOL_VERSION, self.version));
+        }
+
+        // Validate compression version
+        if self.compression_version > 1 {
+            return Err(VefasError::invalid_input(
+                "compression_version",
+                &format!("Unsupported compression version: {}", self.compression_version),
+            ));
         }
 
         // Validate domain name
@@ -141,46 +367,6 @@ impl VefasCanonicalBundle {
             ));
         }
 
-        // Validate required handshake messages are present and within size limits
-        self.validate_handshake_message(&self.client_hello, "client_hello")?;
-        self.validate_handshake_message(&self.server_hello, "server_hello")?;
-
-        // Optional handshake messages (encrypted post-ServerHello in TLS 1.3) may be empty;
-        // if present, enforce size limits
-        if !self.certificate_msg.is_empty() {
-            self.validate_handshake_message(&self.certificate_msg, "certificate_msg")?;
-        }
-        if !self.certificate_verify_msg.is_empty() {
-            self.validate_handshake_message(&self.certificate_verify_msg, "certificate_verify_msg")?;
-        }
-        if !self.server_finished_msg.is_empty() {
-            self.validate_handshake_message(&self.server_finished_msg, "server_finished_msg")?;
-        }
-
-        // Validate TLS records
-        self.validate_tls_record(&self.encrypted_request, "encrypted_request")?;
-        self.validate_tls_record(&self.encrypted_response, "encrypted_response")?;
-
-        // Validate certificate chain limits if provided. Allow empty chain here and defer
-        // semantic checks to higher-level validator.
-        let total_cert_size: usize = self.certificate_chain.iter().map(|cert| cert.len()).sum();
-        if total_cert_size > MAX_CERTIFICATE_CHAIN_SIZE {
-            return Err(VefasError::memory_error(
-                total_cert_size,
-                MAX_CERTIFICATE_CHAIN_SIZE,
-                "certificate chain",
-            ));
-        }
-        for (i, cert) in self.certificate_chain.iter().enumerate() {
-            if cert.len() > MAX_CERTIFICATE_CHAIN_SIZE {
-                return Err(VefasError::memory_error(
-                    cert.len(),
-                    MAX_CERTIFICATE_CHAIN_SIZE,
-                    &format!("certificate[{}]", i),
-                ));
-            }
-        }
-
         // Validate HTTP status code
         if !(100..=599).contains(&self.expected_status) {
             return Err(VefasError::http_error(
@@ -197,30 +383,103 @@ impl VefasCanonicalBundle {
             // Real validation happens in host environment
         }
 
+        // Validate storage format matches compression version
+        match (&self.storage, self.compression_version) {
+            (BundleStorage::Uncompressed(_), 0) => {}, // Valid
+            (BundleStorage::Compressed { .. }, v) if v > 0 => {}, // Valid
+            _ => {
+                return Err(VefasError::invalid_input(
+                    "storage_format",
+                    "Storage format does not match compression version",
+                ));
+            }
+        }
+
+        // Validate compressed bundle if present
+        if let BundleStorage::Compressed { compressed_data, .. } = &self.storage {
+            compressed_data.validate()?;
+        }
+
+        // Validate bundle data by decompressing and checking fields
+        let data = self.get_bundle_data()?;
+
+        // Validate required handshake messages are present and within size limits
+        self.validate_handshake_message(&data.client_hello, "client_hello")?;
+        self.validate_handshake_message(&data.server_hello, "server_hello")?;
+
+        // Optional handshake messages (encrypted post-ServerHello in TLS 1.3) may be empty;
+        // if present, enforce size limits
+        if !data.certificate_msg.is_empty() {
+            self.validate_handshake_message(&data.certificate_msg, "certificate_msg")?;
+        }
+        if !data.certificate_verify_msg.is_empty() {
+            self.validate_handshake_message(&data.certificate_verify_msg, "certificate_verify_msg")?;
+        }
+        if !data.server_finished_msg.is_empty() {
+            self.validate_handshake_message(&data.server_finished_msg, "server_finished_msg")?;
+        }
+
+        // Validate TLS records
+        self.validate_tls_record(&data.encrypted_request, "encrypted_request")?;
+        self.validate_tls_record(&data.encrypted_response, "encrypted_response")?;
+
+        // Validate certificate chain limits if provided. Allow empty chain here and defer
+        // semantic checks to higher-level validator.
+        let total_cert_size: usize = data.certificate_chain.iter().map(|cert| cert.len()).sum();
+        if total_cert_size > MAX_CERTIFICATE_CHAIN_SIZE {
+            return Err(VefasError::memory_error(
+                total_cert_size,
+                MAX_CERTIFICATE_CHAIN_SIZE,
+                "certificate chain",
+            ));
+        }
+        for (i, cert) in data.certificate_chain.iter().enumerate() {
+            if cert.len() > MAX_CERTIFICATE_CHAIN_SIZE {
+                return Err(VefasError::memory_error(
+                    cert.len(),
+                    MAX_CERTIFICATE_CHAIN_SIZE,
+                    &format!("certificate[{}]", i),
+                ));
+            }
+        }
+
         Ok(())
     }
 
     /// Get the total memory footprint of this bundle
     pub fn memory_footprint(&self) -> usize {
-        size_of::<Self>()
-            + self.client_hello.len()
-            + self.server_hello.len()
-            + self.certificate_msg.len()
-            + self.certificate_verify_msg.len()
-            + self.server_finished_msg.len()
-            + self.certificate_chain.iter().map(|cert| cert.len()).sum::<usize>()
-            + self.encrypted_request.len()
-            + self.encrypted_response.len()
-            + self.domain.len()
+        let base_size = size_of::<Self>() + self.domain.len();
+
+        match &self.storage {
+            BundleStorage::Uncompressed(data) => {
+                base_size
+                    + data.client_hello.len()
+                    + data.server_hello.len()
+                    + data.certificate_msg.len()
+                    + data.certificate_verify_msg.len()
+                    + data.server_finished_msg.len()
+                    + data.certificate_chain.iter().map(|cert| cert.len()).sum::<usize>()
+                    + data.encrypted_request.len()
+                    + data.encrypted_response.len()
+            },
+            BundleStorage::Compressed { compressed_data, compression_stats: _ } => {
+                base_size
+                    + compressed_data.memory_footprint()
+                    + size_of::<CompressionStats>()
+            },
+        }
     }
 
     /// Generate a deterministic bundle hash for proof claims
     ///
     /// This hash uniquely identifies the bundle and is included in proof claims
     /// to ensure the verifier processed exactly this data.
-    pub fn bundle_hash(&self) -> [u8; 32] {
+    /// Note: The hash is computed from the uncompressed data to ensure consistency
+    /// regardless of compression status.
+    pub fn bundle_hash(&self) -> VefasResult<[u8; 32]> {
         use sha2::{Sha256, Digest};
 
+        let data = self.get_bundle_data()?;
         let mut hasher = Sha256::new();
 
         // Helper to prefix vec length as u32 be then bytes
@@ -230,23 +489,23 @@ impl VefasCanonicalBundle {
             h.update(bytes);
         }
 
-        // Stable order of fields
+        // Stable order of fields (always based on uncompressed data)
         hasher.update(self.version.to_be_bytes());
-        update_len_bytes(&mut hasher, &self.client_hello);
-        update_len_bytes(&mut hasher, &self.server_hello);
-        update_len_bytes(&mut hasher, &self.certificate_msg);
-        update_len_bytes(&mut hasher, &self.certificate_verify_msg);
-        update_len_bytes(&mut hasher, &self.server_finished_msg);
-        hasher.update(self.client_private_key);
+        update_len_bytes(&mut hasher, &data.client_hello);
+        update_len_bytes(&mut hasher, &data.server_hello);
+        update_len_bytes(&mut hasher, &data.certificate_msg);
+        update_len_bytes(&mut hasher, &data.certificate_verify_msg);
+        update_len_bytes(&mut hasher, &data.server_finished_msg);
+        hasher.update(data.client_private_key);
 
         // Certificate chain: count + each entry
-        hasher.update((self.certificate_chain.len() as u32).to_be_bytes());
-        for cert in &self.certificate_chain {
+        hasher.update((data.certificate_chain.len() as u32).to_be_bytes());
+        for cert in &data.certificate_chain {
             update_len_bytes(&mut hasher, cert);
         }
 
-        update_len_bytes(&mut hasher, &self.encrypted_request);
-        update_len_bytes(&mut hasher, &self.encrypted_response);
+        update_len_bytes(&mut hasher, &data.encrypted_request);
+        update_len_bytes(&mut hasher, &data.encrypted_response);
         update_len_bytes(&mut hasher, self.domain.as_bytes());
         hasher.update(self.timestamp.to_be_bytes());
         hasher.update(self.expected_status.to_be_bytes());
@@ -255,19 +514,23 @@ impl VefasCanonicalBundle {
         let digest = hasher.finalize();
         let mut out = [0u8; 32];
         out.copy_from_slice(&digest);
-        out
+        Ok(out)
     }
 
     /// Check if bundle represents a valid TLS 1.3 session
     pub fn is_tls13_session(&self) -> bool {
         // Basic heuristic: TLS 1.3 ServerHello should contain version 0x0304
-        if self.server_hello.len() < 2 {
-            return false;
+        match self.server_hello() {
+            Ok(server_hello) => {
+                if server_hello.len() < 2 {
+                    return false;
+                }
+                // Look for TLS 1.3 version in ServerHello
+                // This is a simplified check - real implementation would parse properly
+                server_hello.windows(2).any(|window| window == [0x03, 0x04])
+            },
+            Err(_) => false,
         }
-
-        // Look for TLS 1.3 version in ServerHello
-        // This is a simplified check - real implementation would parse properly
-        self.server_hello.windows(2).any(|window| window == [0x03, 0x04])
     }
 
     /// Validate a handshake message
@@ -467,13 +730,63 @@ mod tests {
         ).unwrap()
     }
 
+    fn create_test_bundle_with_compression() -> VefasCanonicalBundle {
+        // Create a large bundle with repetitive data that should compress well
+        let large_data = b"Test data for compression! ".repeat(100);
+
+        // Create valid TLS record with proper length header
+        let create_valid_tls_record = |data: &[u8]| {
+            let mut record = Vec::new();
+            record.push(0x17); // Application data
+            record.extend_from_slice(&[0x03, 0x03]); // TLS version
+            let length = data.len() as u16;
+            record.extend_from_slice(&length.to_be_bytes()); // Length field
+            record.extend_from_slice(data); // Actual data
+            record
+        };
+
+        VefasCanonicalBundle::new_with_compression(
+            large_data.clone(), // client_hello
+            large_data.clone(), // server_hello
+            large_data.clone(), // certificate_msg
+            large_data.clone(), // certificate_verify_msg
+            large_data.clone(), // server_finished_msg
+            [1u8; 32],          // client_private_key
+            vec![large_data.clone(), large_data.clone()], // certificate_chain
+            create_valid_tls_record(&large_data), // encrypted_request
+            create_valid_tls_record(&large_data), // encrypted_response
+            "example.com".to_string(), // domain
+            1640995200,                // timestamp (2022-01-01)
+            200,                       // expected_status
+            [2u8; 32],                 // verifier_nonce
+        ).unwrap()
+    }
+
     #[test]
     fn test_bundle_creation_and_validation() {
         let bundle = create_test_bundle();
         assert_eq!(bundle.domain, "example.com");
         assert_eq!(bundle.expected_status, 200);
         assert_eq!(bundle.version, VEFAS_PROTOCOL_VERSION);
+        assert_eq!(bundle.compression_version, 0); // Uncompressed
+        assert!(!bundle.is_compressed());
         assert!(bundle.validate().is_ok());
+    }
+
+    #[test]
+    fn test_compressed_bundle_creation_and_validation() {
+        let bundle = create_test_bundle_with_compression();
+        assert_eq!(bundle.domain, "example.com");
+        assert_eq!(bundle.expected_status, 200);
+        assert_eq!(bundle.version, VEFAS_PROTOCOL_VERSION);
+        assert!(bundle.compression_version > 0); // Should be compressed
+        assert!(bundle.is_compressed());
+        assert!(bundle.validate().is_ok());
+
+        // Verify compression statistics are available
+        let stats = bundle.compression_stats().unwrap();
+        assert!(stats.is_effective());
+        assert!(stats.compression_ratio() < 80.0);
     }
 
     #[test]
@@ -485,15 +798,64 @@ mod tests {
 
     #[test]
     fn test_bundle_validation_empty_handshake_message() {
-        let mut bundle = create_test_bundle();
-        bundle.client_hello = Vec::new();
+        // Note: With the new compressed format, we cannot directly modify fields
+        // Instead, we test validation by creating an invalid bundle manually
+        let bundle = VefasCanonicalBundle {
+            version: VEFAS_PROTOCOL_VERSION,
+            compression_version: 0,
+            storage: BundleStorage::Uncompressed(UncompressedBundleData {
+                client_hello: Vec::new(), // Empty client hello should fail validation
+                server_hello: vec![0x16, 0x03, 0x04, 0x00, 0x10],
+                certificate_msg: vec![0x16, 0x03, 0x04, 0x00, 0x20],
+                certificate_verify_msg: vec![0x16, 0x03, 0x04, 0x00, 0x08],
+                server_finished_msg: vec![0x16, 0x03, 0x04, 0x00, 0x10],
+                client_private_key: [1u8; 32],
+                certificate_chain: vec![vec![1, 2, 3], vec![4, 5, 6]],
+                encrypted_request: {
+                    let mut v = vec![0x17, 0x03, 0x03, 0x00, 0x20];
+                    v.extend_from_slice(&[0u8; 32]);
+                    v
+                },
+                encrypted_response: {
+                    let mut v = vec![0x17, 0x03, 0x03, 0x00, 0x30];
+                    v.extend_from_slice(&[0u8; 48]);
+                    v
+                },
+            }),
+            domain: "example.com".to_string(),
+            timestamp: 1640995200,
+            expected_status: 200,
+            verifier_nonce: [2u8; 32],
+        };
         assert!(bundle.validate().is_err());
     }
 
     #[test]
     fn test_bundle_validation_empty_certificate_chain() {
-        let mut bundle = create_test_bundle();
-        bundle.certificate_chain = Vec::new();
+        // Create bundle with empty certificate chain (which should be valid)
+        let bundle = VefasCanonicalBundle::new(
+            vec![0x16, 0x03, 0x01, 0x00, 0x10],
+            vec![0x16, 0x03, 0x04, 0x00, 0x10],
+            vec![0x16, 0x03, 0x04, 0x00, 0x20],
+            vec![0x16, 0x03, 0x04, 0x00, 0x08],
+            vec![0x16, 0x03, 0x04, 0x00, 0x10],
+            [1u8; 32],
+            Vec::new(), // Empty certificate chain
+            {
+                let mut v = vec![0x17, 0x03, 0x03, 0x00, 0x20];
+                v.extend_from_slice(&[0u8; 32]);
+                v
+            },
+            {
+                let mut v = vec![0x17, 0x03, 0x03, 0x00, 0x30];
+                v.extend_from_slice(&[0u8; 48]);
+                v
+            },
+            "example.com".to_string(),
+            1640995200,
+            200,
+            [2u8; 32],
+        ).unwrap();
         assert!(bundle.validate().is_ok());
     }
 
@@ -511,9 +873,9 @@ mod tests {
         assert!(footprint > 0);
 
         // Should include all vector lengths plus struct size
-        let expected_min = bundle.client_hello.len()
-            + bundle.server_hello.len()
-            + bundle.certificate_msg.len()
+        let expected_min = bundle.client_hello().unwrap().len()
+            + bundle.server_hello().unwrap().len()
+            + bundle.certificate_msg().unwrap().len()
             + bundle.domain.len();
         assert!(footprint >= expected_min);
     }
@@ -523,11 +885,80 @@ mod tests {
         let bundle1 = create_test_bundle();
         let bundle2 = create_test_bundle();
 
-        let hash1 = bundle1.bundle_hash();
-        let hash2 = bundle2.bundle_hash();
+        let hash1 = bundle1.bundle_hash().unwrap();
+        let hash2 = bundle2.bundle_hash().unwrap();
 
         // Same bundle should produce same hash
         assert_eq!(hash1, hash2);
+    }
+
+    #[test]
+    fn test_compressed_bundle_transparent_access() {
+        let compressed_bundle = create_test_bundle_with_compression();
+
+        // Test transparent access to bundle data
+        assert!(compressed_bundle.client_hello().is_ok());
+        assert!(compressed_bundle.server_hello().is_ok());
+        assert!(compressed_bundle.certificate_msg().is_ok());
+        assert!(compressed_bundle.certificate_verify_msg().is_ok());
+        assert!(compressed_bundle.server_finished_msg().is_ok());
+        assert!(compressed_bundle.client_private_key().is_ok());
+        assert!(compressed_bundle.certificate_chain().is_ok());
+        assert!(compressed_bundle.encrypted_request().is_ok());
+        assert!(compressed_bundle.encrypted_response().is_ok());
+    }
+
+    #[test]
+    fn test_bundle_compression_decompression_roundtrip() {
+        let mut uncompressed_bundle = create_test_bundle();
+        assert!(!uncompressed_bundle.is_compressed());
+
+        // Try to compress the bundle
+        let compressed = uncompressed_bundle.try_compress().unwrap();
+        // Small bundle may not compress, so either outcome is valid
+
+        if compressed {
+            assert!(uncompressed_bundle.is_compressed());
+            assert!(uncompressed_bundle.compression_stats().is_some());
+
+            // Decompress back
+            uncompressed_bundle.decompress().unwrap();
+            assert!(!uncompressed_bundle.is_compressed());
+            assert!(uncompressed_bundle.compression_stats().is_none());
+        }
+    }
+
+    #[test]
+    fn test_bundle_hash_consistent_across_compression() {
+        let uncompressed = create_test_bundle_with_compression();
+        let mut compressed = uncompressed.clone();
+
+        // Both should be compressed, but let's force one to be uncompressed
+        compressed.decompress().unwrap();
+
+        // Now we have one compressed and one uncompressed with same data
+        let hash1 = uncompressed.bundle_hash().unwrap();
+        let hash2 = compressed.bundle_hash().unwrap();
+
+        // Hashes should be identical regardless of compression
+        assert_eq!(hash1, hash2);
+    }
+
+    #[test]
+    fn test_compression_memory_footprint() {
+        let compressed_bundle = create_test_bundle_with_compression();
+
+        if compressed_bundle.is_compressed() {
+            let compressed_footprint = compressed_bundle.memory_footprint();
+
+            // Create equivalent uncompressed bundle
+            let mut uncompressed_bundle = compressed_bundle.clone();
+            uncompressed_bundle.decompress().unwrap();
+            let uncompressed_footprint = uncompressed_bundle.memory_footprint();
+
+            // Compressed should use less memory
+            assert!(compressed_footprint < uncompressed_footprint);
+        }
     }
 
     #[test]
@@ -536,12 +967,10 @@ mod tests {
         let mut bundle2 = create_test_bundle();
         bundle2.domain = "different.com".to_string();
 
-        let hash1 = bundle1.bundle_hash();
-        let hash2 = bundle2.bundle_hash();
+        let hash1 = bundle1.bundle_hash().unwrap();
+        let hash2 = bundle2.bundle_hash().unwrap();
 
         // Different bundles should produce different hashes
-        // Note: This is a weak test since our placeholder hash is simple
-        // In real implementation with SHA-256, this would be more robust
         assert_ne!(hash1, hash2);
     }
 
@@ -550,8 +979,34 @@ mod tests {
         let bundle = create_test_bundle();
         assert!(bundle.is_tls13_session());
 
-        let mut bundle_tls12 = create_test_bundle();
-        bundle_tls12.server_hello = vec![0x16, 0x03, 0x03, 0x00, 0x10]; // TLS 1.2
+        // Create a TLS 1.2 bundle manually
+        let bundle_tls12 = VefasCanonicalBundle {
+            version: VEFAS_PROTOCOL_VERSION,
+            compression_version: 0,
+            storage: BundleStorage::Uncompressed(UncompressedBundleData {
+                client_hello: vec![0x16, 0x03, 0x01, 0x00, 0x10],
+                server_hello: vec![0x16, 0x03, 0x03, 0x00, 0x10], // TLS 1.2
+                certificate_msg: vec![0x16, 0x03, 0x04, 0x00, 0x20],
+                certificate_verify_msg: vec![0x16, 0x03, 0x04, 0x00, 0x08],
+                server_finished_msg: vec![0x16, 0x03, 0x04, 0x00, 0x10],
+                client_private_key: [1u8; 32],
+                certificate_chain: vec![vec![1, 2, 3], vec![4, 5, 6]],
+                encrypted_request: {
+                    let mut v = vec![0x17, 0x03, 0x03, 0x00, 0x20];
+                    v.extend_from_slice(&[0u8; 32]);
+                    v
+                },
+                encrypted_response: {
+                    let mut v = vec![0x17, 0x03, 0x03, 0x00, 0x30];
+                    v.extend_from_slice(&[0u8; 48]);
+                    v
+                },
+            }),
+            domain: "example.com".to_string(),
+            timestamp: 1640995200,
+            expected_status: 200,
+            verifier_nonce: [2u8; 32],
+        };
         assert!(!bundle_tls12.is_tls13_session());
     }
 
@@ -592,15 +1047,63 @@ mod tests {
 
     #[test]
     fn test_oversized_handshake_message() {
-        let mut bundle = create_test_bundle();
-        bundle.client_hello = vec![0u8; MAX_HANDSHAKE_MESSAGE_SIZE + 1];
+        // Create bundle with oversized handshake message
+        let bundle = VefasCanonicalBundle {
+            version: VEFAS_PROTOCOL_VERSION,
+            compression_version: 0,
+            storage: BundleStorage::Uncompressed(UncompressedBundleData {
+                client_hello: vec![0u8; MAX_HANDSHAKE_MESSAGE_SIZE + 1],
+                server_hello: vec![0x16, 0x03, 0x04, 0x00, 0x10],
+                certificate_msg: vec![0x16, 0x03, 0x04, 0x00, 0x20],
+                certificate_verify_msg: vec![0x16, 0x03, 0x04, 0x00, 0x08],
+                server_finished_msg: vec![0x16, 0x03, 0x04, 0x00, 0x10],
+                client_private_key: [1u8; 32],
+                certificate_chain: vec![vec![1, 2, 3], vec![4, 5, 6]],
+                encrypted_request: {
+                    let mut v = vec![0x17, 0x03, 0x03, 0x00, 0x20];
+                    v.extend_from_slice(&[0u8; 32]);
+                    v
+                },
+                encrypted_response: {
+                    let mut v = vec![0x17, 0x03, 0x03, 0x00, 0x30];
+                    v.extend_from_slice(&[0u8; 48]);
+                    v
+                },
+            }),
+            domain: "example.com".to_string(),
+            timestamp: 1640995200,
+            expected_status: 200,
+            verifier_nonce: [2u8; 32],
+        };
         assert!(bundle.validate().is_err());
     }
 
     #[test]
     fn test_oversized_tls_record() {
-        let mut bundle = create_test_bundle();
-        bundle.encrypted_request = vec![0u8; MAX_TLS_RECORD_SIZE + 1];
+        // Create bundle with oversized TLS record
+        let bundle = VefasCanonicalBundle {
+            version: VEFAS_PROTOCOL_VERSION,
+            compression_version: 0,
+            storage: BundleStorage::Uncompressed(UncompressedBundleData {
+                client_hello: vec![0x16, 0x03, 0x01, 0x00, 0x10],
+                server_hello: vec![0x16, 0x03, 0x04, 0x00, 0x10],
+                certificate_msg: vec![0x16, 0x03, 0x04, 0x00, 0x20],
+                certificate_verify_msg: vec![0x16, 0x03, 0x04, 0x00, 0x08],
+                server_finished_msg: vec![0x16, 0x03, 0x04, 0x00, 0x10],
+                client_private_key: [1u8; 32],
+                certificate_chain: vec![vec![1, 2, 3], vec![4, 5, 6]],
+                encrypted_request: vec![0u8; MAX_TLS_RECORD_SIZE + 1], // Too large
+                encrypted_response: {
+                    let mut v = vec![0x17, 0x03, 0x03, 0x00, 0x30];
+                    v.extend_from_slice(&[0u8; 48]);
+                    v
+                },
+            }),
+            domain: "example.com".to_string(),
+            timestamp: 1640995200,
+            expected_status: 200,
+            verifier_nonce: [2u8; 32],
+        };
         assert!(bundle.validate().is_err());
     }
 }

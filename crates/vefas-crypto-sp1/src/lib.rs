@@ -32,7 +32,6 @@
 //! - **Complete API**: Implements all VEFAS cryptographic traits
 
 #![no_std]
-#![forbid(std)]
 #![forbid(unsafe_code)]
 #![deny(
     missing_docs,
@@ -902,6 +901,7 @@ pub fn create_sp1_provider() -> SP1CryptoProvider {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use hex_literal::hex;
 
     #[test]
     fn test_sp1_provider_creation() {
@@ -916,6 +916,9 @@ mod tests {
         let provider = SP1CryptoProvider::new();
         let result = provider.sha256(b"hello world");
         assert_eq!(result.len(), 32);
+        // NIST known answer test for "hello world"
+        let expected = hex!("b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9");
+        assert_eq!(result, expected);
     }
 
     #[test]
@@ -923,6 +926,11 @@ mod tests {
         let provider = SP1CryptoProvider::new();
         let result = provider.hmac_sha256(b"key", b"message");
         assert_eq!(result.len(), 32);
+        // RFC 4231 test case (Case 1) HMAC-SHA-256 with key = 0x0b*20, data = "Hi There"
+        let key = [0x0bu8; 20];
+        let mac = provider.hmac_sha256(&key, b"Hi There");
+        let expected = hex!("b0344c61d8db38535ca8afceaf0bf12b881dc200c9833da726e9376c2e32cff7");
+        assert_eq!(mac, expected);
     }
 
     #[test]
@@ -934,6 +942,15 @@ mod tests {
 
         let okm = provider.hkdf_expand(&prk, b"info", 42).unwrap();
         assert_eq!(okm.len(), 42);
+
+        // RFC 5869 Test Case 1 (HKDF-SHA256)
+        let ikm = [0x0bu8; 22];
+        let salt = hex!("000102030405060708090a0b0c");
+        let info = hex!("f0f1f2f3f4f5f6f7f8f9");
+        let prk_ref = provider.hkdf_extract(&salt, &ikm);
+        let okm_ref = provider.hkdf_expand(&prk_ref, &info, 42).unwrap();
+        let expected_okm = hex!("3cb25f25faacd57a90434f64d0362f2a2d2d0a90cf1a5a4c5db02d56ecc4c5bf34007208d5b887185865");
+        assert_eq!(okm_ref, expected_okm);
     }
 
     #[test]

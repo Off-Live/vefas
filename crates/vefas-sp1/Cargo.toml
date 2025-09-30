@@ -14,6 +14,7 @@ uuid = { version = "1.10", features = ["v4"], default-features = false }
 # SP1-specific dependencies
 sp1-zkvm = { version = "5.2.1", default-features = false, features = ["lib"] }
 sp1-sdk = { version = "5.2.1", optional = true }
+sp1-core-executor = { version = "5.2.1", optional = true }
 
 # Script crate for guest program
 vefas-sp1-script = { path = "script", optional = true }
@@ -25,7 +26,8 @@ bincode.workspace = true
 
 # Platform-specific dependencies
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing = "0.1"
 
 [features]
 default = ["host-prover"]
-host-prover = ["sp1-sdk", "vefas-sp1-script"]
+host-prover = ["sp1-sdk", "vefas-sp1-script", "sp1-core-executor"]

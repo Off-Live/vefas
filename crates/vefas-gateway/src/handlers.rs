@@ -240,19 +240,49 @@ mod tests {
 
     #[test]
     fn test_verify_proof_payload_validation() {
-        let claim = ProofClaim {
-            domain: "example.com".to_string(),
-            method: "GET".to_string(),
-            path: "/".to_string(),
-            request_hash: "hash123".to_string(),
-            response_hash: "hash456".to_string(),
-            timestamp: 1234567890,
-            status_code: 200,
-            tls_version: "1.3".to_string(),
-            cipher_suite: "TLS_AES_128_GCM_SHA256".to_string(),
-            certificate_chain_hash: String::new(),
-            handshake_transcript_hash: String::new(),
+        use vefas_types::{VefasPerformanceMetrics, VefasExecutionMetadata};
+
+        let performance = VefasPerformanceMetrics {
+            total_cycles: 1000000,
+            decompression_cycles: 50000,
+            validation_cycles: 100000,
+            handshake_cycles: 200000,
+            certificate_validation_cycles: 150000,
+            key_derivation_cycles: 80000,
+            decryption_cycles: 120000,
+            http_parsing_cycles: 60000,
+            crypto_operations_cycles: 240000,
+            memory_usage: 2048,
+            compression_ratio: Some(0.7),
+            original_bundle_size: Some(4096),
+            decompressed_bundle_size: Some(2867),
         };
+
+        let execution_metadata = VefasExecutionMetadata {
+            cycles: 1000000,
+            memory_usage: 2048,
+            execution_time_ms: 150,
+            platform: "sp1".to_string(),
+            proof_time_ms: 75,
+        };
+
+        let claim = ProofClaim::new(
+            "example.com".to_string(),
+            "GET".to_string(),
+            "/".to_string(),
+            [1u8; 32], // request_commitment
+            [2u8; 32], // response_commitment
+            "hash123".to_string(),
+            "hash456".to_string(),
+            200,
+            "1.3".to_string(),
+            "TLS_AES_128_GCM_SHA256".to_string(),
+            [3u8; 32], // certificate_chain_hash
+            [4u8; 32], // handshake_transcript_hash
+            1234567890,
+            performance,
+            execution_metadata,
+        ).unwrap();
 
         use base64::{engine::general_purpose, Engine as _};
         let proof_data = ProofData {

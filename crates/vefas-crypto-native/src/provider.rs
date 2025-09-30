@@ -9,7 +9,7 @@ use std::vec::Vec;
 use vefas_crypto::traits::{
     Hash, Aead, KeyExchange, Signature, Kdf, VefasCrypto, PrecompileDetection, PrecompileSummary
 };
-use vefas_types::{VefasResult, VefasError};
+use vefas_types::VefasResult;
 
 /// Native cryptographic provider implementation
 ///

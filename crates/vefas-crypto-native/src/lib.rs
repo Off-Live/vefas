@@ -38,7 +38,7 @@
 //! ## Example Usage
 //!
 //! ```rust
-//! use vefas_crypto::traits::{Hash, Aead, VefasCrypto};
+//! use vefas_crypto::traits::{Hash, Aead, VefasCrypto, KeyExchange};
 //! use vefas_crypto_native::NativeCryptoProvider;
 //!
 //! let provider = NativeCryptoProvider::new();
@@ -75,11 +75,11 @@ pub use vefas_types;
 
 // Internal modules
 mod provider;
-mod hash;
-mod aead;
-mod key_exchange;
-mod signature;
-mod kdf;
+pub mod hash;
+pub mod aead;
+pub mod key_exchange;
+pub mod signature;
+pub mod kdf;
 
 // Public API
 pub use provider::NativeCryptoProvider;

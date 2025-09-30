@@ -4,6 +4,10 @@ version = "0.1.0"
 edition = "2021"
 publish = false
 
+[lib]
+name = "vefas_tests"
+path = "lib.rs"
+
 [[bin]]
 name = "integration_tests"
 path = "integration_tests.rs"
@@ -35,6 +39,11 @@ rstest = "0.26.1"
 proptest = "1.7.0"
 hex = { version = "0.4", default-features = false, features = ["alloc"] }
 hex-literal = "1.0"
+
+# Security testing
+uuid = { version = "1.8", features = ["v4"] }
+futures = "0.3"
+fastrand = "2.0"
 
 # HTTP client for real network tests
 reqwest = { version = "0.12", features = ["json"] }

@@ -20,7 +20,7 @@ use crate::{
 /// This matches the exact specification from README.md and represents
 /// the output of the minimal guest verifier in the revolutionary
 /// host-rustls + guest-verifier architecture.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct VefasProofClaim {
     /// Protocol version for compatibility
     pub version: u16,
@@ -28,11 +28,23 @@ pub struct VefasProofClaim {
     /// Target domain that was verified
     pub domain: String,
 
-    /// SHA-256 hash commitment of the HTTP request
+    /// HTTP method that was executed (e.g., "GET", "POST")
+    pub method: String,
+
+    /// HTTP path that was accessed (e.g., "/api/v1/data")
+    pub path: String,
+
+    /// SHA-256 hash commitment of the HTTP request (binary format)
     pub request_commitment: [u8; 32],
 
-    /// SHA-256 hash commitment of the HTTP response
+    /// SHA-256 hash commitment of the HTTP response (binary format)
     pub response_commitment: [u8; 32],
+
+    /// SHA-256 hash of the complete HTTP request (hex string format for compatibility)
+    pub request_hash: String,
+
+    /// SHA-256 hash of the complete HTTP response (hex string format for compatibility)
+    pub response_hash: String,
 
     /// HTTP status code from the response
     pub status_code: u16,
@@ -43,40 +55,74 @@ pub struct VefasProofClaim {
     /// Cipher suite used (e.g., "TLS_AES_256_GCM_SHA384")
     pub cipher_suite: String,
 
-    /// SHA-256 hash of the certificate chain
+    /// SHA-256 hash of the certificate chain (binary format)
     pub certificate_chain_hash: [u8; 32],
 
-    /// SHA-256 hash of the handshake transcript
+    /// SHA-256 hash of the handshake transcript (binary format)
     pub handshake_transcript_hash: [u8; 32],
 
     /// Unix timestamp when the session was captured
     pub timestamp: u64,
 
+    /// Performance metrics breakdown for detailed analysis
+    pub performance: VefasPerformanceMetrics,
+
     /// Execution metadata from the zkVM
     pub execution_metadata: VefasExecutionMetadata,
 }
 
+/// Performance metrics breakdown for zkVM execution
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct VefasPerformanceMetrics {
+    /// Total execution cycles
+    pub total_cycles: u64,
+    /// Cycles spent on bundle decompression
+    pub decompression_cycles: u64,
+    /// Cycles spent on bundle validation
+    pub validation_cycles: u64,
+    /// Cycles spent on TLS handshake verification
+    pub handshake_cycles: u64,
+    /// Cycles spent on certificate validation
+    pub certificate_validation_cycles: u64,
+    /// Cycles spent on key derivation
+    pub key_derivation_cycles: u64,
+    /// Cycles spent on application data decryption
+    pub decryption_cycles: u64,
+    /// Cycles spent on HTTP parsing
+    pub http_parsing_cycles: u64,
+    /// Cycles spent on cryptographic operations
+    pub crypto_operations_cycles: u64,
+    /// Memory usage estimate (bytes)
+    pub memory_usage: usize,
+    /// Compression ratio if bundle was compressed
+    pub compression_ratio: Option<f32>,
+    /// Original bundle size if compressed
+    pub original_bundle_size: Option<usize>,
+    /// Decompressed bundle size
+    pub decompressed_bundle_size: Option<usize>,
+}
+
 /// Execution metadata for zkVM proof generation
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct VefasExecutionMetadata {
     /// Number of execution cycles in the zkVM
     pub cycles: u64,
 
     /// Memory usage during execution (bytes)
-    pub memory_usage: usize,
+    pub memory_usage: u64,
 
     /// Execution time in milliseconds
     pub execution_time_ms: u64,
 
-    /// zkVM platform ("sp1" or "risc0")
-    pub platform: String,
-
     /// Proof generation time in milliseconds
     pub proof_time_ms: u64,
+
+    /// Platform identifier (e.g., "SP1", "RISC0")
+    pub platform: String,
 }
 
 /// Complete proof package including claim and cryptographic proof
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct VefasProof {
     /// The verified claim
     pub claim: VefasProofClaim,
@@ -96,27 +142,37 @@ impl VefasProofClaim {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         domain: String,
+        method: String,
+        path: String,
         request_commitment: [u8; 32],
         response_commitment: [u8; 32],
+        request_hash: String,
+        response_hash: String,
         status_code: u16,
         tls_version: String,
         cipher_suite: String,
         certificate_chain_hash: [u8; 32],
         handshake_transcript_hash: [u8; 32],
         timestamp: u64,
+        performance: VefasPerformanceMetrics,
         execution_metadata: VefasExecutionMetadata,
     ) -> VefasResult<Self> {
         let claim = Self {
             version: VEFAS_PROTOCOL_VERSION,
             domain,
+            method,
+            path,
             request_commitment,
             response_commitment,
+            request_hash,
+            response_hash,
             status_code,
             tls_version,
             cipher_suite,
             certificate_chain_hash,
             handshake_transcript_hash,
             timestamp,
+            performance,
             execution_metadata,
         };
 
@@ -238,7 +294,7 @@ impl VefasExecutionMetadata {
     ) -> VefasResult<Self> {
         let metadata = Self {
             cycles,
-            memory_usage,
+            memory_usage: memory_usage as u64,
             execution_time_ms,
             platform,
             proof_time_ms,
@@ -364,18 +420,41 @@ mod tests {
         ).unwrap()
     }
 
+    fn create_test_performance_metrics() -> VefasPerformanceMetrics {
+        VefasPerformanceMetrics {
+            total_cycles: 1_000_000,
+            decompression_cycles: 50_000,
+            validation_cycles: 100_000,
+            handshake_cycles: 200_000,
+            certificate_validation_cycles: 150_000,
+            key_derivation_cycles: 80_000,
+            decryption_cycles: 120_000,
+            http_parsing_cycles: 60_000,
+            crypto_operations_cycles: 240_000,
+            memory_usage: 2048,
+            compression_ratio: Some(0.7),
+            original_bundle_size: Some(4096),
+            decompressed_bundle_size: Some(2867),
+        }
+    }
+
     fn create_test_proof_claim() -> VefasProofClaim {
         VefasProofClaim::new(
-            "example.com".to_string(),               // domain
-            [1u8; 32],                               // request_commitment
-            [2u8; 32],                               // response_commitment
-            200,                                     // status_code
-            "1.3".to_string(),                       // tls_version
-            "TLS_AES_256_GCM_SHA384".to_string(),    // cipher_suite
-            [3u8; 32],                               // certificate_chain_hash
-            [4u8; 32],                               // handshake_transcript_hash
-            1640995200,                              // timestamp (2022-01-01)
-            create_test_execution_metadata(),        // execution_metadata
+            "example.com".to_string(),                                     // domain
+            "GET".to_string(),                                             // method
+            "/api/test".to_string(),                                       // path
+            [1u8; 32],                                                     // request_commitment
+            [2u8; 32],                                                     // response_commitment
+            "req_hash_abc123".to_string(),                                 // request_hash
+            "resp_hash_def456".to_string(),                                // response_hash
+            200,                                                           // status_code
+            "1.3".to_string(),                                             // tls_version
+            "TLS_AES_256_GCM_SHA384".to_string(),                          // cipher_suite
+            [3u8; 32],                                                     // certificate_chain_hash
+            [4u8; 32],                                                     // handshake_transcript_hash
+            1640995200,                                                    // timestamp (2022-01-01)
+            create_test_performance_metrics(),                             // performance
+            create_test_execution_metadata(),                              // execution_metadata
         ).unwrap()
     }
 

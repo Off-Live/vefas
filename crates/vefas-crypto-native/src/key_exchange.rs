@@ -3,7 +3,7 @@
 //! This module provides production-grade implementations of key exchange algorithms
 //! including X25519 and P-256 ECDH for TLS 1.3 and other protocols.
 
-use x25519_dalek::{EphemeralSecret, StaticSecret, PublicKey as X25519PublicKey};
+use x25519_dalek::{StaticSecret, PublicKey as X25519PublicKey};
 use p256::{SecretKey, PublicKey as P256PublicKey};
 use p256::elliptic_curve::sec1::{ToEncodedPoint, FromEncodedPoint};
 use rand_core::OsRng;

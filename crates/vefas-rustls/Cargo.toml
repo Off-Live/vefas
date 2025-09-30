@@ -6,8 +6,8 @@ license.workspace = true
 description = "Custom rustls CryptoProvider with ephemeral key capture for VEFAS"
 
 [dependencies]
-rustls = { version = "0.23", default-features = false }
-aws-lc-rs = { version = "1", default-features = false }
+rustls = { version = "0.23", default-features = false, features = ["aws_lc_rs"] }
+aws-lc-rs = { version = "1", default-features = false, features = ["aws-lc-sys"] }
 x25519-dalek = { version = "2", default-features = false, features = ["alloc"] }
 rand_core = { version = "0.9", default-features = false }
 zeroize = { version = "1.8", default-features = false }

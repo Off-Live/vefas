@@ -43,6 +43,7 @@ extern crate std;
 // No imports needed at lib level
 
 pub mod bundle;
+pub mod compression;
 pub mod errors;
 pub mod http;
 pub mod input;
@@ -52,10 +53,11 @@ pub mod utils;
 
 // Re-export core types for convenience
 pub use bundle::{VefasCanonicalBundle, BundleMetadata};
+pub use compression::{CompressedBundle, BundleCompressor, CompressionStats, CompressionAlgorithm, CompressionParameters};
 pub use errors::{VefasError, VefasResult};
 pub use http::{HttpMethod, HttpRequest, HttpResponse, HttpStatusCode, HttpHeaders};
 pub use input::{VefasInput, TlsSessionData, VefasMetadata};
-pub use output::{VefasProof, VefasProofClaim, VefasExecutionMetadata};
+pub use output::{VefasProof, VefasProofClaim, VefasExecutionMetadata, VefasPerformanceMetrics};
 pub use tls::{TlsVersion, CipherSuite, SessionKeys, HandshakeData, CertificateChain};
 
 /// Protocol version for VEFAS data structures

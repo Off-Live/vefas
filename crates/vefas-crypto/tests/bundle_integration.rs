@@ -233,28 +233,28 @@ fn test_bundle_crypto_integration() {
     let bundle = create_test_bundle();
 
     // Test hash operations on bundle components
-    let client_hello_hash = provider.sha256(&bundle.client_hello);
+    let client_hello_hash = provider.sha256(&bundle.client_hello().unwrap());
     assert_eq!(client_hello_hash.len(), 32);
 
-    let server_hello_hash = provider.sha256(&bundle.server_hello);
+    let server_hello_hash = provider.sha256(&bundle.server_hello().unwrap());
     assert_eq!(server_hello_hash.len(), 32);
 
     // Test transcript hash calculation (TLS 1.3 handshake)
     let mut transcript = Vec::new();
-    transcript.extend_from_slice(&bundle.client_hello);
-    transcript.extend_from_slice(&bundle.server_hello);
-    transcript.extend_from_slice(&bundle.certificate_msg);
+    transcript.extend_from_slice(&bundle.client_hello().unwrap());
+    transcript.extend_from_slice(&bundle.server_hello().unwrap());
+    transcript.extend_from_slice(&bundle.certificate_msg().unwrap());
 
     let transcript_hash = provider.sha256(&transcript);
     assert_eq!(transcript_hash.len(), 32);
 
     // Test HKDF key derivation using shared secret
-    let handshake_secret = provider.hkdf_extract(&[0u8; 32], &bundle.client_private_key);
+    let handshake_secret = provider.hkdf_extract(&[0u8; 32], &bundle.client_private_key().unwrap());
     assert_eq!(handshake_secret.len(), 32);
 
     // Test derive handshake secrets using TLS 1.3 pattern
     let (client_hs_secret, server_hs_secret) = provider
-        .derive_handshake_secrets(&bundle.client_private_key, &transcript_hash)
+        .derive_handshake_secrets(&bundle.client_private_key().unwrap(), &transcript_hash)
         .expect("handshake secret derivation should succeed");
 
     assert_eq!(client_hs_secret.len(), 32);
@@ -284,7 +284,7 @@ fn test_bundle_crypto_integration() {
     assert_eq!(decrypted, plaintext);
 
     // Test that we can process certificate verification data
-    for cert_der in &bundle.certificate_chain {
+    for cert_der in &bundle.certificate_chain().unwrap() {
         let cert_hash = provider.sha256(cert_der);
         assert_eq!(cert_hash.len(), 32);
     }
@@ -298,91 +298,98 @@ fn test_bundle_crypto_integration() {
 
 /// Create a minimal test bundle for crypto integration testing
 fn create_test_bundle() -> VefasCanonicalBundle {
-    VefasCanonicalBundle {
-        version: 1,
+    // Minimal TLS handshake messages
+    let client_hello = vec![
+        0x16, 0x03, 0x03, 0x00, 0x20, // TLS record header
+        0x01, 0x00, 0x00, 0x1c, // ClientHello header
+        0x03, 0x03, // TLS version
+        // Client random (32 bytes)
+        0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
+        0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,
+        0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17,
+        0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f,
+    ];
 
-        // Minimal TLS handshake messages
-        client_hello: vec![
-            0x16, 0x03, 0x03, 0x00, 0x20, // TLS record header
-            0x01, 0x00, 0x00, 0x1c, // ClientHello header
-            0x03, 0x03, // TLS version
-            // Client random (32 bytes)
-            0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
-            0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,
-            0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17,
-            0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f,
-        ],
+    let server_hello = vec![
+        0x16, 0x03, 0x03, 0x00, 0x20, // TLS record header
+        0x02, 0x00, 0x00, 0x1c, // ServerHello header
+        0x03, 0x03, // TLS version
+        // Server random (32 bytes)
+        0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27,
+        0x28, 0x29, 0x2a, 0x2b, 0x2c, 0x2d, 0x2e, 0x2f,
+        0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37,
+        0x38, 0x39, 0x3a, 0x3b, 0x3c, 0x3d, 0x3e, 0x3f,
+    ];
 
-        server_hello: vec![
-            0x16, 0x03, 0x03, 0x00, 0x20, // TLS record header
-            0x02, 0x00, 0x00, 0x1c, // ServerHello header
-            0x03, 0x03, // TLS version
-            // Server random (32 bytes)
-            0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27,
-            0x28, 0x29, 0x2a, 0x2b, 0x2c, 0x2d, 0x2e, 0x2f,
-            0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37,
-            0x38, 0x39, 0x3a, 0x3b, 0x3c, 0x3d, 0x3e, 0x3f,
-        ],
+    let certificate_msg = vec![
+        0x16, 0x03, 0x03, 0x00, 0x10, // TLS record header
+        0x0b, 0x00, 0x00, 0x0c, // Certificate header
+        0x00, 0x00, 0x09, // Certificate list length
+        0x00, 0x00, 0x06, // First certificate length
+        0x30, 0x82, 0x01, 0x02, // Minimal certificate DER
+    ];
 
-        certificate_msg: vec![
-            0x16, 0x03, 0x03, 0x00, 0x10, // TLS record header
-            0x0b, 0x00, 0x00, 0x0c, // Certificate header
-            0x00, 0x00, 0x09, // Certificate list length
-            0x00, 0x00, 0x06, // First certificate length
-            0x30, 0x82, 0x01, 0x02, // Minimal certificate DER
-        ],
+    let certificate_verify_msg = vec![
+        0x16, 0x03, 0x03, 0x00, 0x08, // TLS record header
+        0x0f, 0x00, 0x00, 0x04, // CertificateVerify header
+        0x04, 0x03, 0x00, 0x00, // Signature algorithm and signature
+    ];
 
-        certificate_verify_msg: vec![
-            0x16, 0x03, 0x03, 0x00, 0x08, // TLS record header
-            0x0f, 0x00, 0x00, 0x04, // CertificateVerify header
-            0x04, 0x03, 0x00, 0x00, // Signature algorithm and signature
-        ],
+    let server_finished_msg = vec![
+        0x16, 0x03, 0x03, 0x00, 0x14, // TLS record header
+        0x14, 0x00, 0x00, 0x10, // Finished header
+        // Finished verify data (12 bytes)
+        0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
+        0x09, 0x0a, 0x0b, 0x0c,
+    ];
 
-        server_finished_msg: vec![
-            0x16, 0x03, 0x03, 0x00, 0x14, // TLS record header
-            0x14, 0x00, 0x00, 0x10, // Finished header
-            // Finished verify data (12 bytes)
-            0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
-            0x09, 0x0a, 0x0b, 0x0c,
-        ],
+    // Cryptographic materials
+    let client_private_key = [0x42; 32]; // Test private key
+    let certificate_chain = vec![
+        // Minimal test certificate
+        vec![
+            0x30, 0x82, 0x01, 0x02, 0x30, 0x82, 0x00, 0xaa,
+            0xa0, 0x03, 0x02, 0x01, 0x02, 0x02, 0x01, 0x01,
+        ]
+    ];
 
-        // Cryptographic materials
-        client_private_key: [0x42; 32], // Test private key
-        certificate_chain: vec![
-            // Minimal test certificate
-            vec![
-                0x30, 0x82, 0x01, 0x02, 0x30, 0x82, 0x00, 0xaa,
-                0xa0, 0x03, 0x02, 0x01, 0x02, 0x02, 0x01, 0x01,
-            ]
-        ],
+    // Application data
+    let encrypted_request = vec![
+        0x17, 0x03, 0x03, 0x00, 0x20, // Application data record
+        // Encrypted HTTP request
+        0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
+        0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x10,
+        0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18,
+        0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f, 0x20,
+    ];
 
-        // Application data
-        encrypted_request: vec![
-            0x17, 0x03, 0x03, 0x00, 0x20, // Application data record
-            // Encrypted HTTP request
-            0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
-            0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x10,
-            0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18,
-            0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f, 0x20,
-        ],
+    let encrypted_response = vec![
+        0x17, 0x03, 0x03, 0x00, 0x30, // Application data record
+        // Encrypted HTTP response
+        0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28,
+        0x29, 0x2a, 0x2b, 0x2c, 0x2d, 0x2e, 0x2f, 0x30,
+        0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38,
+        0x39, 0x3a, 0x3b, 0x3c, 0x3d, 0x3e, 0x3f, 0x40,
+        0x41, 0x42, 0x43, 0x44, 0x45, 0x46, 0x47, 0x48,
+        0x49, 0x4a, 0x4b, 0x4c, 0x4d, 0x4e, 0x4f, 0x50,
+    ];
 
-        encrypted_response: vec![
-            0x17, 0x03, 0x03, 0x00, 0x30, // Application data record
-            // Encrypted HTTP response
-            0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28,
-            0x29, 0x2a, 0x2b, 0x2c, 0x2d, 0x2e, 0x2f, 0x30,
-            0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38,
-            0x39, 0x3a, 0x3b, 0x3c, 0x3d, 0x3e, 0x3f, 0x40,
-            0x41, 0x42, 0x43, 0x44, 0x45, 0x46, 0x47, 0x48,
-            0x49, 0x4a, 0x4b, 0x4c, 0x4d, 0x4e, 0x4f, 0x50,
-        ],
-
-        // Verification metadata
-        domain: "example.com".to_string(),
-        timestamp: 1234567890,
-        expected_status: 200,
-        verifier_nonce: [0x5a; 32],
-    }
+    // Use the proper constructor
+    VefasCanonicalBundle::new(
+        client_hello,
+        server_hello,
+        certificate_msg,
+        certificate_verify_msg,
+        server_finished_msg,
+        client_private_key,
+        certificate_chain,
+        encrypted_request,
+        encrypted_response,
+        "example.com".to_string(),
+        1234567890,
+        200,
+        [0x5a; 32],
+    ).expect("Failed to create test bundle")
 }
 
 /// Test serialization/deserialization compatibility
@@ -401,13 +408,13 @@ fn test_bundle_serialization() {
 
     // Test that the bundle has expected structure
     assert_eq!(bundle.version, 1);
-    assert!(!bundle.client_hello.is_empty());
-    assert!(!bundle.server_hello.is_empty());
-    assert!(!bundle.certificate_msg.is_empty());
-    assert!(!bundle.encrypted_request.is_empty());
-    assert!(!bundle.encrypted_response.is_empty());
+    assert!(!bundle.client_hello().unwrap().is_empty());
+    assert!(!bundle.server_hello().unwrap().is_empty());
+    assert!(!bundle.certificate_msg().unwrap().is_empty());
+    assert!(!bundle.encrypted_request().unwrap().is_empty());
+    assert!(!bundle.encrypted_response().unwrap().is_empty());
     assert_eq!(bundle.domain, "example.com");
-    assert_eq!(bundle.client_private_key.len(), 32);
+    assert_eq!(bundle.client_private_key().unwrap().len(), 32);
     assert_eq!(bundle.verifier_nonce.len(), 32);
 }
 
@@ -418,16 +425,16 @@ fn test_deterministic_processing() {
     let provider = MockCrypto;
 
     // Process the same bundle multiple times
-    let hash1 = provider.sha256(&bundle.client_hello);
-    let hash2 = provider.sha256(&bundle.client_hello);
-    let hash3 = provider.sha256(&bundle.client_hello);
+    let hash1 = provider.sha256(&bundle.client_hello().unwrap());
+    let hash2 = provider.sha256(&bundle.client_hello().unwrap());
+    let hash3 = provider.sha256(&bundle.client_hello().unwrap());
 
     // Results should be identical (deterministic)
     assert_eq!(hash1, hash2);
     assert_eq!(hash2, hash3);
 
     // Test with HKDF
-    let secret1 = provider.hkdf_extract(&[0u8; 32], &bundle.client_private_key);
-    let secret2 = provider.hkdf_extract(&[0u8; 32], &bundle.client_private_key);
+    let secret1 = provider.hkdf_extract(&[0u8; 32], &bundle.client_private_key().unwrap());
+    let secret2 = provider.hkdf_extract(&[0u8; 32], &bundle.client_private_key().unwrap());
     assert_eq!(secret1, secret2);
 }

@@ -3,14 +3,7 @@
 //! This module defines the data structures used across the cryptographic
 //! trait system for type safety and consistent interfaces.
 
-#[cfg(not(feature = "std"))]
-extern crate alloc;
-
-#[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
-
-#[cfg(feature = "std")]
-use std::vec::Vec;
 
 use core::mem::size_of;
 use serde::{Deserialize, Serialize};
@@ -651,6 +644,7 @@ impl CertificateChain {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use alloc::vec;
 
     #[test]
     fn test_hash_output() {

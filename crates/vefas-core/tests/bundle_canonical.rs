@@ -113,8 +113,8 @@ fn produces_tls_ciphertext_for_encrypted_fields() {
     let bundle = builder.from_session_data(&session, &http, &keylog).expect("bundle creation");
 
     // Expect TLSCiphertext (0x17) for encrypted fields; current implementation wrongly uses plaintext
-    assert_eq!(bundle.encrypted_request[0], 0x17, "encrypted_request must be TLSCiphertext (type=0x17)");
-    assert_eq!(bundle.encrypted_response[0], 0x17, "encrypted_response must be TLSCiphertext (type=0x17)");
+    assert_eq!(bundle.encrypted_request().unwrap()[0], 0x17, "encrypted_request must be TLSCiphertext (type=0x17)");
+    assert_eq!(bundle.encrypted_response().unwrap()[0], 0x17, "encrypted_response must be TLSCiphertext (type=0x17)");
 }
 
 #[test]
@@ -146,7 +146,7 @@ fn uses_server_finished_message() {
     let mut builder = BundleBuilder::new();
     let bundle = builder.from_session_data(&session, &http, &keylog).expect("bundle creation");
 
-    assert!(bundle.server_finished_msg.ends_with(b"server_finished"), "must select server Finished message");
+    assert!(bundle.server_finished_msg().unwrap().ends_with(b"server_finished"), "must select server Finished message");
 }
 
 #[test]

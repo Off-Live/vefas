@@ -15,14 +15,7 @@
 //! - `PrecompileDetection`: zkVM precompile capability detection
 //! - `VefasCrypto`: Combined trait for convenience
 
-#[cfg(not(feature = "std"))]
-extern crate alloc;
-
-#[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
-
-#[cfg(feature = "std")]
-use std::vec::Vec;
 
 use vefas_types::{VefasResult, VefasError};
 
@@ -733,6 +726,7 @@ pub trait VefasCrypto:
 #[cfg(test)]
 mod tests {
     use super::*;
+    use alloc::vec;
 
     // Mock implementation for testing new trait structure
     struct MockCrypto;

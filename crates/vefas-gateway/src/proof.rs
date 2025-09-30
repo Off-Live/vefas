@@ -8,7 +8,7 @@ use serde::{Serialize, Deserialize};
 use sha2::{Sha256, Digest};
 use uuid::Uuid;
 
-use vefas_types::VefasCanonicalBundle;
+use vefas_types::{VefasCanonicalBundle, VefasExecutionMetadata, VefasPerformanceMetrics, VefasProofClaim};
 use crate::types::*;
 use crate::error::*;
 
@@ -31,7 +31,7 @@ pub struct ProofService {
 
 impl std::fmt::Debug for ProofService {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let mut available_platforms = Vec::new();
+        let mut available_platforms: Vec<&str> = Vec::new();
 
         #[cfg(feature = "sp1")]
         if self.sp1_prover.is_some() {
@@ -130,20 +130,8 @@ impl ProofService {
                     use base64::{engine::general_purpose, Engine as _};
                     let proof_data_b64 = general_purpose::STANDARD.encode(&sp1_proof.proof_data);
 
-                    // Convert SP1 proof claim to gateway proof claim
-                    let claim = ProofClaim {
-                        domain: sp1_proof.claim.domain,
-                        method: sp1_proof.claim.method,
-                        path: sp1_proof.claim.path,
-                        request_hash: sp1_proof.claim.request_hash,
-                        response_hash: sp1_proof.claim.response_hash,
-                        timestamp: sp1_proof.claim.timestamp,
-                        status_code: sp1_proof.claim.status_code,
-                        tls_version: sp1_proof.claim.tls_version,
-                        cipher_suite: sp1_proof.claim.cipher_suite,
-                        certificate_chain_hash: sp1_proof.claim.certificate_chain_hash,
-                        handshake_transcript_hash: sp1_proof.claim.handshake_transcript_hash,
-                    };
+                    // Since we unified types, SP1 proof claim is already the correct type
+                    let claim = sp1_proof.claim;
 
                     // Convert SP1 execution metadata to gateway execution metadata
                     let execution_metadata = ExecutionMetadata {
@@ -179,20 +167,8 @@ impl ProofService {
                     use base64::{engine::general_purpose, Engine as _};
                     let proof_data_b64 = general_purpose::STANDARD.encode(&risc0_proof.receipt_data);
 
-                    // Convert RISC0 proof claim to gateway proof claim (extended fields)
-                    let claim = ProofClaim {
-                        domain: risc0_proof.claim.domain,
-                        method: risc0_proof.claim.method,
-                        path: risc0_proof.claim.path,
-                        request_hash: risc0_proof.claim.request_hash,
-                        response_hash: risc0_proof.claim.response_hash,
-                        timestamp: risc0_proof.claim.timestamp,
-                        status_code: risc0_proof.claim.status_code,
-                        tls_version: risc0_proof.claim.tls_version,
-                        cipher_suite: risc0_proof.claim.cipher_suite,
-                        certificate_chain_hash: risc0_proof.claim.certificate_chain_hash,
-                        handshake_transcript_hash: risc0_proof.claim.handshake_transcript_hash,
-                    };
+                    // Since we unified types, RISC0 proof claim is already the correct type
+                    let claim = risc0_proof.claim;
 
                     // Convert RISC0 execution metadata to gateway execution metadata
                     let execution_metadata = ExecutionMetadata {
@@ -251,28 +227,15 @@ impl ProofService {
                 if let Some(ref prover) = self.sp1_prover {
                     info!("Using SP1 zkVM for proof verification");
 
-                    // Reconstruct SP1 proof structure
-                    let sp1_proof_claim = vefas_sp1::VefasProofClaim {
-                        domain: proof_data.claim.domain.clone(),
-                        method: proof_data.claim.method.clone(),
-                        path: proof_data.claim.path.clone(),
-                        request_hash: proof_data.claim.request_hash.clone(),
-                        response_hash: proof_data.claim.response_hash.clone(),
-                        timestamp: proof_data.claim.timestamp,
-                        status_code: proof_data.claim.status_code,
-                        tls_version: proof_data.claim.tls_version.clone(),
-                        cipher_suite: proof_data.claim.cipher_suite.clone(),
-                        certificate_chain_hash: proof_data.claim.certificate_chain_hash.clone(),
-                        handshake_transcript_hash: proof_data.claim.handshake_transcript_hash.clone(),
-                    };
-
-                    let sp1_exec_metadata = vefas_sp1::VefasExecutionMetadata {
-                        cycles: proof_data.execution_metadata.cycles,
-                        memory_usage: proof_data.execution_metadata.memory_usage,
-                        execution_time_ms: proof_data.execution_metadata.execution_time_ms,
-                        proof_time_ms: proof_data.execution_metadata.proof_time_ms,
-                        platform: proof_data.execution_metadata.platform.clone(),
-                    };
+                    // Convert gateway types to unified types
+                    let sp1_proof_claim = proof_data.claim.clone();
+                    let sp1_exec_metadata = VefasExecutionMetadata::new(
+                        proof_data.execution_metadata.cycles,
+                        proof_data.execution_metadata.memory_usage as usize,
+                        proof_data.execution_metadata.execution_time_ms,
+                        proof_data.execution_metadata.platform.clone(),
+                        proof_data.execution_metadata.proof_time_ms,
+                    ).map_err(|e| VefasGatewayError::InvalidRequest(format!("Invalid execution metadata: {:?}", e)))?;
 
                     let sp1_proof = vefas_sp1::VefasSp1Proof {
                         proof_data: proof_bytes,
@@ -285,20 +248,8 @@ impl ProofService {
                         VefasGatewayError::ProofVerificationFailed(format!("SP1 proof verification failed: {:?}", e))
                     })?;
 
-                    // Convert back to gateway proof claim
-                    ProofClaim {
-                        domain: verified.domain,
-                        method: verified.method,
-                        path: verified.path,
-                        request_hash: verified.request_hash,
-                        response_hash: verified.response_hash,
-                        timestamp: verified.timestamp,
-                        status_code: verified.status_code,
-                        tls_version: verified.tls_version,
-                        cipher_suite: verified.cipher_suite,
-                        certificate_chain_hash: verified.certificate_chain_hash,
-                        handshake_transcript_hash: verified.handshake_transcript_hash,
-                    }
+                    // The verified result is already VefasProofClaim (unified type)
+                    verified
                 } else {
                     return Err(VefasGatewayError::UnsupportedPlatform("SP1 prover not initialized".to_string()));
                 }
@@ -309,28 +260,15 @@ impl ProofService {
                 if let Some(ref prover) = self.risc0_prover {
                     info!("Using RISC0 zkVM for proof verification");
 
-                    // Reconstruct RISC0 proof structure
-                    let risc0_proof_claim = vefas_risc0::VefasProofClaim {
-                        domain: proof_data.claim.domain.clone(),
-                        method: proof_data.claim.method.clone(),
-                        path: proof_data.claim.path.clone(),
-                        request_hash: proof_data.claim.request_hash.clone(),
-                        response_hash: proof_data.claim.response_hash.clone(),
-                        timestamp: proof_data.claim.timestamp,
-                        status_code: proof_data.claim.status_code,
-                        tls_version: proof_data.claim.tls_version.clone(),
-                        cipher_suite: proof_data.claim.cipher_suite.clone(),
-                        certificate_chain_hash: proof_data.claim.certificate_chain_hash.clone(),
-                        handshake_transcript_hash: proof_data.claim.handshake_transcript_hash.clone(),
-                    };
-
-                    let risc0_exec_metadata = vefas_risc0::VefasExecutionMetadata {
-                        cycles: proof_data.execution_metadata.cycles,
-                        memory_usage: proof_data.execution_metadata.memory_usage,
-                        execution_time_ms: proof_data.execution_metadata.execution_time_ms,
-                        proof_time_ms: proof_data.execution_metadata.proof_time_ms,
-                        platform: proof_data.execution_metadata.platform.clone(),
-                    };
+                    // Convert gateway types to unified types
+                    let risc0_proof_claim = proof_data.claim.clone();
+                    let risc0_exec_metadata = VefasExecutionMetadata::new(
+                        proof_data.execution_metadata.cycles,
+                        proof_data.execution_metadata.memory_usage as usize,
+                        proof_data.execution_metadata.execution_time_ms,
+                        proof_data.execution_metadata.platform.clone(),
+                        proof_data.execution_metadata.proof_time_ms,
+                    ).map_err(|e| VefasGatewayError::InvalidRequest(format!("Invalid execution metadata: {:?}", e)))?;
 
                     let risc0_proof = vefas_risc0::VefasRisc0Proof {
                         receipt_data: proof_bytes,
@@ -343,20 +281,8 @@ impl ProofService {
                         VefasGatewayError::ProofVerificationFailed(format!("RISC0 proof verification failed: {:?}", e))
                     })?;
 
-                    // Convert back to gateway proof claim
-                    ProofClaim {
-                        domain: verified.domain,
-                        method: verified.method,
-                        path: verified.path,
-                        request_hash: verified.request_hash,
-                        response_hash: verified.response_hash,
-                        timestamp: verified.timestamp,
-                        status_code: verified.status_code,
-                        tls_version: verified.tls_version,
-                        cipher_suite: verified.cipher_suite,
-                        certificate_chain_hash: verified.certificate_chain_hash,
-                        handshake_transcript_hash: verified.handshake_transcript_hash,
-                    }
+                    // The verified result is already VefasProofClaim (unified type)
+                    verified
                 } else {
                     return Err(VefasGatewayError::UnsupportedPlatform("RISC0 prover not initialized".to_string()));
                 }

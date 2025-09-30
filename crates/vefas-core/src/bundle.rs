@@ -88,18 +88,54 @@ pub struct BundleMetadata {
     pub connection_id: [u8; 16],
 }
 
+/// Compression strategy for bundle creation
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CompressionStrategy {
+    /// Never compress bundles
+    Never,
+    /// Automatically compress when beneficial (default)
+    Auto,
+    /// Always attempt compression (even if not beneficial)
+    Always,
+}
+
+impl Default for CompressionStrategy {
+    fn default() -> Self {
+        Self::Auto
+    }
+}
+
 /// Builder for creating VefasCanonicalBundle from session data
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct BundleBuilder {
     record_parser: TlsRecordParser,
+    compression_strategy: CompressionStrategy,
+}
+
+impl Default for BundleBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl BundleBuilder {
-    /// Create a new bundle builder
+    /// Create a new bundle builder with default settings
     pub fn new() -> Self {
         Self {
             record_parser: TlsRecordParser::new(),
+            compression_strategy: CompressionStrategy::default(),
         }
+    }
+
+    /// Set the compression strategy for this builder
+    pub fn with_compression_strategy(mut self, strategy: CompressionStrategy) -> Self {
+        self.compression_strategy = strategy;
+        self
+    }
+
+    /// Get the current compression strategy
+    pub fn compression_strategy(&self) -> CompressionStrategy {
+        self.compression_strategy
     }
 
     /// Create a canonical bundle from session data, HTTP data, and secrets
@@ -170,8 +206,8 @@ impl BundleBuilder {
             metadata,
         };
 
-        // Create the final canonical bundle
-        self.create_deterministic_bundle(components)
+        // Create the final canonical bundle based on compression strategy
+        self.create_bundle_with_strategy(components)
     }
 
     /// Extract handshake messages from raw TLS data
@@ -408,7 +444,62 @@ impl BundleBuilder {
         })
     }
 
-    /// Create the final deterministic bundle
+    /// Create bundle based on the configured compression strategy
+    fn create_bundle_with_strategy(&self, components: BundleComponents) -> Result<VefasCanonicalBundle> {
+        match self.compression_strategy {
+            CompressionStrategy::Never => self.create_deterministic_bundle(components),
+            CompressionStrategy::Auto => self.create_deterministic_bundle_with_compression(components),
+            CompressionStrategy::Always => self.create_deterministic_bundle_force_compression(components),
+        }
+    }
+
+    /// Create the final deterministic bundle with automatic compression
+    fn create_deterministic_bundle_with_compression(&self, components: BundleComponents) -> Result<VefasCanonicalBundle> {
+        // Generate deterministic verifier nonce based on bundle contents
+        let verifier_nonce = self.generate_deterministic_nonce(&components)?;
+
+        // Choose client private key: require captured ephemeral scalar (no placeholder allowed)
+        let client_private_key = components.client_ephemeral_private_key.ok_or_else(||
+            VefasCoreError::ValidationError("Missing client ephemeral private key; configure provider seed or capture hooks".to_string())
+        )?;
+
+        // Use on-wire TLSCiphertext captured earlier
+        let encrypted_request = components.encrypted_request;
+        let encrypted_response = components.encrypted_response;
+
+        // Create the bundle with automatic compression
+        let bundle = VefasCanonicalBundle::new_with_compression(
+            components.client_hello,
+            components.server_hello,
+            components.certificate_msg,
+            components.certificate_verify_msg,
+            components.finished_msgs.into_iter().next().unwrap_or_default(), // server_finished_msg
+            client_private_key,
+            components.certificate_chain,
+            encrypted_request,
+            encrypted_response,
+            components.metadata.domain,
+            components.metadata.timestamp,
+            components.expected_status,
+            verifier_nonce,
+        ).map_err(|e| VefasCoreError::ValidationError(format!("Failed to create bundle: {:?}", e)))?;
+
+        Ok(bundle)
+    }
+
+    /// Create the final deterministic bundle with forced compression
+    fn create_deterministic_bundle_force_compression(&self, components: BundleComponents) -> Result<VefasCanonicalBundle> {
+        // First create an uncompressed bundle
+        let mut bundle = self.create_deterministic_bundle(components)?;
+
+        // Force compression
+        bundle.try_compress()
+            .map_err(|e| VefasCoreError::ValidationError(format!("Failed to force compression: {:?}", e)))?;
+
+        Ok(bundle)
+    }
+
+    /// Create an uncompressed bundle (for compatibility or when compression is not desired)
     fn create_deterministic_bundle(&self, components: BundleComponents) -> Result<VefasCanonicalBundle> {
         // Generate deterministic verifier nonce based on bundle contents
         let verifier_nonce = self.generate_deterministic_nonce(&components)?;
@@ -422,7 +513,7 @@ impl BundleBuilder {
         let encrypted_request = components.encrypted_request;
         let encrypted_response = components.encrypted_response;
 
-        // Create the bundle matching the actual VefasCanonicalBundle structure
+        // Create the bundle without compression
         let bundle = VefasCanonicalBundle::new(
             components.client_hello,
             components.server_hello,
@@ -761,12 +852,6 @@ impl BundleBuilder {
         Ok(nonce)
     }
 
-    /// Temporary placeholder derivation until real ECDHE scalar capture is wired
-    fn derive_client_key_placeholder(&self, secret_data: &SecretData) -> Result<[u8; 32]> {
-        let mut private_key = [0u8; 32];
-        private_key.copy_from_slice(&secret_data.client_random);
-        Ok(private_key)
-    }
 
     /// Split application data into request and response parts
     fn split_application_data(&self, app_data: &[u8]) -> Result<(Vec<u8>, Vec<u8>)> {
@@ -1336,8 +1421,8 @@ mod tests {
         // Bundles should be identical (deterministic)
         assert_eq!(bundle1.domain, bundle2.domain);
         assert_eq!(bundle1.timestamp, bundle2.timestamp);
-        assert_eq!(bundle1.client_hello, bundle2.client_hello);
-        assert_eq!(bundle1.server_hello, bundle2.server_hello);
+        assert_eq!(bundle1.client_hello().unwrap(), bundle2.client_hello().unwrap());
+        assert_eq!(bundle1.server_hello().unwrap(), bundle2.server_hello().unwrap());
     }
 
     #[test]
@@ -1352,9 +1437,9 @@ mod tests {
         // Verify all required fields are present
         assert_eq!(bundle.domain, "example.com");
         assert_eq!(bundle.timestamp, 1234567890);
-        assert!(!bundle.client_hello.is_empty());
-        assert!(!bundle.server_hello.is_empty());
-        assert!(!bundle.encrypted_request.is_empty());
+        assert!(!bundle.client_hello().unwrap().is_empty());
+        assert!(!bundle.server_hello().unwrap().is_empty());
+        assert!(!bundle.encrypted_request().unwrap().is_empty());
         // Note: VefasCanonicalBundle doesn't have connection_id field
     }
 }
