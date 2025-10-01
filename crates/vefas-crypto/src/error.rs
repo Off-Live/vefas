@@ -3,7 +3,7 @@
 //! This module provides error handling that works in both std and no_std environments,
 //! with different implementations based on the feature flags.
 
-use alloc::{string::String, format, string::ToString};
+use alloc::{format, string::String, string::ToString};
 
 use serde::{Deserialize, Serialize};
 
@@ -115,7 +115,11 @@ impl core::fmt::Display for CryptoError {
                 write!(f, "Invalid key size: {}", size)
             }
             CryptoError::InvalidNonceSize { expected, actual } => {
-                write!(f, "Invalid nonce size: expected {}, got {}", expected, actual)
+                write!(
+                    f,
+                    "Invalid nonce size: expected {}, got {}",
+                    expected, actual
+                )
             }
             CryptoError::InvalidPublicKey => write!(f, "Invalid public key"),
             CryptoError::InvalidPrivateKey => write!(f, "Invalid private key"),
@@ -139,20 +143,26 @@ impl From<vefas_types::VefasError> for CryptoError {
         use vefas_types::errors::{CryptoErrorType, VefasError};
 
         match err {
-            VefasError::CryptoError { error_type, message: _ } => {
-                match error_type {
-                    CryptoErrorType::InvalidKeyLength => CryptoError::InvalidKeySize(0),
-                    CryptoErrorType::InvalidNonceLength => CryptoError::InvalidNonceSize { expected: 0, actual: 0 },
-                    CryptoErrorType::CipherFailed => CryptoError::DecryptionFailed,
-                    CryptoErrorType::HashFailed => CryptoError::HashFailed,
-                    CryptoErrorType::SignatureVerificationFailed => CryptoError::SignatureVerificationFailed,
-                    CryptoErrorType::KeyDerivationFailed => CryptoError::KeyDerivationFailed,
-                    CryptoErrorType::InvalidEcPoint => CryptoError::InvalidPublicKey,
-                    CryptoErrorType::InvalidSignature => CryptoError::InvalidSignature,
-                    CryptoErrorType::HkdfFailed => CryptoError::HkdfFailed,
-                    CryptoErrorType::UnsupportedAlgorithm => CryptoError::UnsupportedAlgorithm,
+            VefasError::CryptoError {
+                error_type,
+                message: _,
+            } => match error_type {
+                CryptoErrorType::InvalidKeyLength => CryptoError::InvalidKeySize(0),
+                CryptoErrorType::InvalidNonceLength => CryptoError::InvalidNonceSize {
+                    expected: 0,
+                    actual: 0,
+                },
+                CryptoErrorType::CipherFailed => CryptoError::DecryptionFailed,
+                CryptoErrorType::HashFailed => CryptoError::HashFailed,
+                CryptoErrorType::SignatureVerificationFailed => {
+                    CryptoError::SignatureVerificationFailed
                 }
-            }
+                CryptoErrorType::KeyDerivationFailed => CryptoError::KeyDerivationFailed,
+                CryptoErrorType::InvalidEcPoint => CryptoError::InvalidPublicKey,
+                CryptoErrorType::InvalidSignature => CryptoError::InvalidSignature,
+                CryptoErrorType::HkdfFailed => CryptoError::HkdfFailed,
+                CryptoErrorType::UnsupportedAlgorithm => CryptoError::UnsupportedAlgorithm,
+            },
             _ => CryptoError::Generic("VefasError conversion".to_string()),
         }
     }
@@ -164,48 +174,59 @@ impl From<CryptoError> for vefas_types::VefasError {
         use vefas_types::errors::CryptoErrorType;
 
         let (error_type, message) = match err {
-            CryptoError::InvalidKeySize(size) => {
-                (CryptoErrorType::InvalidKeyLength, format!("Invalid key size: {}", size))
-            }
-            CryptoError::InvalidNonceSize { expected, actual } => {
-                (CryptoErrorType::InvalidNonceLength, format!("Invalid nonce size: expected {}, got {}", expected, actual))
-            }
-            CryptoError::InvalidPublicKey => {
-                (CryptoErrorType::InvalidEcPoint, "Invalid public key".to_string())
-            }
-            CryptoError::InvalidPrivateKey => {
-                (CryptoErrorType::InvalidEcPoint, "Invalid private key".to_string())
-            }
-            CryptoError::InvalidSignature => {
-                (CryptoErrorType::InvalidSignature, "Invalid signature".to_string())
-            }
-            CryptoError::DecryptionFailed => {
-                (CryptoErrorType::CipherFailed, "Decryption failed".to_string())
-            }
-            CryptoError::HashFailed => {
-                (CryptoErrorType::HashFailed, "Hash computation failed".to_string())
-            }
-            CryptoError::SignatureVerificationFailed => {
-                (CryptoErrorType::SignatureVerificationFailed, "Signature verification failed".to_string())
-            }
-            CryptoError::KeyDerivationFailed => {
-                (CryptoErrorType::KeyDerivationFailed, "Key derivation failed".to_string())
-            }
-            CryptoError::HkdfFailed => {
-                (CryptoErrorType::HkdfFailed, "HKDF operation failed".to_string())
-            }
-            CryptoError::RngFailed => {
-                (CryptoErrorType::KeyDerivationFailed, "Random number generation failed".to_string())
-            }
-            CryptoError::CertificateValidationFailed => {
-                (CryptoErrorType::SignatureVerificationFailed, "Certificate validation failed".to_string())
-            }
-            CryptoError::UnsupportedAlgorithm => {
-                (CryptoErrorType::UnsupportedAlgorithm, "Unsupported algorithm".to_string())
-            }
-            CryptoError::Generic(msg) => {
-                (CryptoErrorType::CipherFailed, msg)
-            }
+            CryptoError::InvalidKeySize(size) => (
+                CryptoErrorType::InvalidKeyLength,
+                format!("Invalid key size: {}", size),
+            ),
+            CryptoError::InvalidNonceSize { expected, actual } => (
+                CryptoErrorType::InvalidNonceLength,
+                format!("Invalid nonce size: expected {}, got {}", expected, actual),
+            ),
+            CryptoError::InvalidPublicKey => (
+                CryptoErrorType::InvalidEcPoint,
+                "Invalid public key".to_string(),
+            ),
+            CryptoError::InvalidPrivateKey => (
+                CryptoErrorType::InvalidEcPoint,
+                "Invalid private key".to_string(),
+            ),
+            CryptoError::InvalidSignature => (
+                CryptoErrorType::InvalidSignature,
+                "Invalid signature".to_string(),
+            ),
+            CryptoError::DecryptionFailed => (
+                CryptoErrorType::CipherFailed,
+                "Decryption failed".to_string(),
+            ),
+            CryptoError::HashFailed => (
+                CryptoErrorType::HashFailed,
+                "Hash computation failed".to_string(),
+            ),
+            CryptoError::SignatureVerificationFailed => (
+                CryptoErrorType::SignatureVerificationFailed,
+                "Signature verification failed".to_string(),
+            ),
+            CryptoError::KeyDerivationFailed => (
+                CryptoErrorType::KeyDerivationFailed,
+                "Key derivation failed".to_string(),
+            ),
+            CryptoError::HkdfFailed => (
+                CryptoErrorType::HkdfFailed,
+                "HKDF operation failed".to_string(),
+            ),
+            CryptoError::RngFailed => (
+                CryptoErrorType::KeyDerivationFailed,
+                "Random number generation failed".to_string(),
+            ),
+            CryptoError::CertificateValidationFailed => (
+                CryptoErrorType::SignatureVerificationFailed,
+                "Certificate validation failed".to_string(),
+            ),
+            CryptoError::UnsupportedAlgorithm => (
+                CryptoErrorType::UnsupportedAlgorithm,
+                "Unsupported algorithm".to_string(),
+            ),
+            CryptoError::Generic(msg) => (CryptoErrorType::CipherFailed, msg),
         };
 
         vefas_types::VefasError::crypto_error(error_type, &message)
@@ -264,7 +285,9 @@ mod tests {
 
         if let Ok(written) = serde_json_core::to_slice(&err, &mut buffer) {
             // Test deserialization
-            if let Ok((deserialized, _)) = serde_json_core::from_slice::<CryptoError>(&buffer[..written]) {
+            if let Ok((deserialized, _)) =
+                serde_json_core::from_slice::<CryptoError>(&buffer[..written])
+            {
                 assert_eq!(err, deserialized);
             }
         }

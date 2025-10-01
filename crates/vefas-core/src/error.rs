@@ -3,7 +3,7 @@
 extern crate alloc;
 
 use alloc::string::String;
-use vefas_types::errors::{VefasError, TlsErrorType, HttpErrorType};
+use vefas_types::errors::{HttpErrorType, TlsErrorType, VefasError};
 
 /// Result type for VEFAS Core operations
 pub type Result<T> = core::result::Result<T, VefasCoreError>;
@@ -144,7 +144,7 @@ impl From<url::ParseError> for VefasCoreError {
 
 impl From<rustls::Error> for VefasCoreError {
     fn from(err: rustls::Error) -> Self {
-            Self::TlsError(err.to_string())
+        Self::TlsError(err.to_string())
     }
 }
 
@@ -153,34 +153,33 @@ impl From<VefasError> for VefasCoreError {
         match err {
             VefasError::InvalidInput { field, reason } => {
                 Self::ValidationError(format!("Invalid input for {}: {}", field, reason))
-            },
-            VefasError::TlsError { error_type: _, message } => {
-                Self::TlsError(message)
-            },
-            VefasError::HttpError { error_type: _, message } => {
-                Self::HttpError(message)
-            },
-            VefasError::CryptoError { error_type: _, message } => {
-                Self::VerificationError(message)
-            },
-            VefasError::CertificateError { error_type: _, message } => {
-                Self::VerificationError(message)
-            },
-            VefasError::SerializationError { message } => {
-                Self::SerializationError(message)
-            },
-            VefasError::ZkvmError { platform: _, message } => {
-                Self::Internal(message)
-            },
-            VefasError::MemoryError { .. } => {
-                Self::Internal("Memory error".to_string())
-            },
+            }
+            VefasError::TlsError {
+                error_type: _,
+                message,
+            } => Self::TlsError(message),
+            VefasError::HttpError {
+                error_type: _,
+                message,
+            } => Self::HttpError(message),
+            VefasError::CryptoError {
+                error_type: _,
+                message,
+            } => Self::VerificationError(message),
+            VefasError::CertificateError {
+                error_type: _,
+                message,
+            } => Self::VerificationError(message),
+            VefasError::SerializationError { message } => Self::SerializationError(message),
+            VefasError::ZkvmError {
+                platform: _,
+                message,
+            } => Self::Internal(message),
+            VefasError::MemoryError { .. } => Self::Internal("Memory error".to_string()),
             VefasError::VersionMismatch { .. } => {
                 Self::ValidationError("Version mismatch".to_string())
-            },
-            VefasError::Internal { message } => {
-                Self::Internal(message)
-            },
+            }
+            VefasError::Internal { message } => Self::Internal(message),
         }
     }
 }
@@ -189,16 +188,30 @@ impl From<VefasCoreError> for VefasError {
     fn from(e: VefasCoreError) -> Self {
         match e {
             VefasCoreError::ConfigError(msg) => VefasError::invalid_input("config", &msg),
-            VefasCoreError::UrlError(msg) => VefasError::http_error(HttpErrorType::InvalidUrl, &msg),
-            VefasCoreError::NetworkError(msg) => VefasError::http_error(HttpErrorType::InvalidResponse, &msg),
-            VefasCoreError::TlsError(msg) => VefasError::tls_error(TlsErrorType::InvalidHandshake, &msg),
-            VefasCoreError::HttpError(msg) => VefasError::http_error(HttpErrorType::InvalidResponse, &msg),
-            VefasCoreError::VerificationError(msg) => VefasError::tls_error(TlsErrorType::HandshakeVerificationFailed, &msg),
+            VefasCoreError::UrlError(msg) => {
+                VefasError::http_error(HttpErrorType::InvalidUrl, &msg)
+            }
+            VefasCoreError::NetworkError(msg) => {
+                VefasError::http_error(HttpErrorType::InvalidResponse, &msg)
+            }
+            VefasCoreError::TlsError(msg) => {
+                VefasError::tls_error(TlsErrorType::InvalidHandshake, &msg)
+            }
+            VefasCoreError::HttpError(msg) => {
+                VefasError::http_error(HttpErrorType::InvalidResponse, &msg)
+            }
+            VefasCoreError::VerificationError(msg) => {
+                VefasError::tls_error(TlsErrorType::HandshakeVerificationFailed, &msg)
+            }
             VefasCoreError::SerializationError(msg) => VefasError::serialization_error(&msg),
             VefasCoreError::InvalidInput(msg) => VefasError::invalid_input("input", &msg),
             VefasCoreError::Internal(msg) => VefasError::internal(&msg),
-            VefasCoreError::ExtractionError(msg) => VefasError::tls_error(TlsErrorType::InvalidTranscript, &msg),
-            VefasCoreError::ValidationError(msg) => VefasError::tls_error(TlsErrorType::InvalidHandshake, &msg),
+            VefasCoreError::ExtractionError(msg) => {
+                VefasError::tls_error(TlsErrorType::InvalidTranscript, &msg)
+            }
+            VefasCoreError::ValidationError(msg) => {
+                VefasError::tls_error(TlsErrorType::InvalidHandshake, &msg)
+            }
         }
     }
 }

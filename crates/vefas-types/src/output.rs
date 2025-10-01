@@ -10,9 +10,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     errors::{VefasError, VefasResult},
-    MAX_DOMAIN_LENGTH,
-    VEFAS_PROTOCOL_VERSION,
     utils::format_decimal,
+    MAX_DOMAIN_LENGTH, VEFAS_PROTOCOL_VERSION,
 };
 
 /// Simplified proof claim structure for the new architecture
@@ -184,12 +183,18 @@ impl VefasProofClaim {
     pub fn validate(&self) -> VefasResult<()> {
         // Check protocol version
         if self.version != VEFAS_PROTOCOL_VERSION {
-            return Err(VefasError::version_mismatch(VEFAS_PROTOCOL_VERSION, self.version));
+            return Err(VefasError::version_mismatch(
+                VEFAS_PROTOCOL_VERSION,
+                self.version,
+            ));
         }
 
         // Validate domain name
         if self.domain.is_empty() {
-            return Err(VefasError::invalid_input("domain", "Domain cannot be empty"));
+            return Err(VefasError::invalid_input(
+                "domain",
+                "Domain cannot be empty",
+            ));
         }
 
         if self.domain.len() > MAX_DOMAIN_LENGTH {
@@ -207,7 +212,8 @@ impl VefasProofClaim {
         if !(100..=599).contains(&self.status_code) {
             return Err(VefasError::http_error(
                 crate::errors::HttpErrorType::InvalidStatusCode,
-                &("Invalid HTTP status code: ".to_string() + &format_decimal(self.status_code as usize)),
+                &("Invalid HTTP status code: ".to_string()
+                    + &format_decimal(self.status_code as usize)),
             ));
         }
 
@@ -252,7 +258,12 @@ impl VefasProofClaim {
         let domain_bytes = self.domain.as_bytes();
         let timestamp_bytes = self.timestamp.to_le_bytes();
 
-        for (i, &byte) in domain_bytes.iter().chain(timestamp_bytes.iter()).take(32).enumerate() {
+        for (i, &byte) in domain_bytes
+            .iter()
+            .chain(timestamp_bytes.iter())
+            .take(32)
+            .enumerate()
+        {
             hash[i] = byte;
         }
 
@@ -308,7 +319,10 @@ impl VefasExecutionMetadata {
     pub fn validate(&self) -> VefasResult<()> {
         // Validate platform
         if self.platform.is_empty() {
-            return Err(VefasError::zkvm_error("unknown", "Platform cannot be empty"));
+            return Err(VefasError::zkvm_error(
+                "unknown",
+                "Platform cannot be empty",
+            ));
         }
 
         // Validate known platforms
@@ -374,7 +388,10 @@ impl VefasProof {
         }
 
         if proof_format.is_empty() {
-            return Err(VefasError::invalid_input("proof_format", "proof_format cannot be empty"));
+            return Err(VefasError::invalid_input(
+                "proof_format",
+                "proof_format cannot be empty",
+            ));
         }
 
         Ok(Self {
@@ -412,12 +429,13 @@ mod tests {
 
     fn create_test_execution_metadata() -> VefasExecutionMetadata {
         VefasExecutionMetadata::new(
-            1_000_000,       // cycles
-            2048,            // memory_usage
-            150,             // execution_time_ms
+            1_000_000,         // cycles
+            2048,              // memory_usage
+            150,               // execution_time_ms
             "sp1".to_string(), // platform
-            75,              // proof_time_ms
-        ).unwrap()
+            75,                // proof_time_ms
+        )
+        .unwrap()
     }
 
     fn create_test_performance_metrics() -> VefasPerformanceMetrics {
@@ -440,22 +458,23 @@ mod tests {
 
     fn create_test_proof_claim() -> VefasProofClaim {
         VefasProofClaim::new(
-            "example.com".to_string(),                                     // domain
-            "GET".to_string(),                                             // method
-            "/api/test".to_string(),                                       // path
-            [1u8; 32],                                                     // request_commitment
-            [2u8; 32],                                                     // response_commitment
-            "req_hash_abc123".to_string(),                                 // request_hash
-            "resp_hash_def456".to_string(),                                // response_hash
-            200,                                                           // status_code
-            "1.3".to_string(),                                             // tls_version
-            "TLS_AES_256_GCM_SHA384".to_string(),                          // cipher_suite
-            [3u8; 32],                                                     // certificate_chain_hash
-            [4u8; 32],                                                     // handshake_transcript_hash
-            1640995200,                                                    // timestamp (2022-01-01)
-            create_test_performance_metrics(),                             // performance
-            create_test_execution_metadata(),                              // execution_metadata
-        ).unwrap()
+            "example.com".to_string(),            // domain
+            "GET".to_string(),                    // method
+            "/api/test".to_string(),              // path
+            [1u8; 32],                            // request_commitment
+            [2u8; 32],                            // response_commitment
+            "req_hash_abc123".to_string(),        // request_hash
+            "resp_hash_def456".to_string(),       // response_hash
+            200,                                  // status_code
+            "1.3".to_string(),                    // tls_version
+            "TLS_AES_256_GCM_SHA384".to_string(), // cipher_suite
+            [3u8; 32],                            // certificate_chain_hash
+            [4u8; 32],                            // handshake_transcript_hash
+            1640995200,                           // timestamp (2022-01-01)
+            create_test_performance_metrics(),    // performance
+            create_test_execution_metadata(),     // execution_metadata
+        )
+        .unwrap()
     }
 
     #[test]
@@ -633,7 +652,8 @@ mod tests {
             alloc::vec![1, 2, 3, 4, 5],
             "SP1".to_string(),
             alloc::vec![6, 7, 8, 9],
-        ).unwrap();
+        )
+        .unwrap();
 
         assert_eq!(proof.proof_format, "SP1");
         assert!(!proof.proof.is_empty());
@@ -647,7 +667,8 @@ mod tests {
             alloc::vec![1, 2, 3, 4, 5],
             "SP1".to_string(),
             alloc::vec![6, 7, 8, 9],
-        ).unwrap();
+        )
+        .unwrap();
 
         let serialized = proof.serialize().unwrap();
         let deserialized = VefasProof::deserialize(&serialized).unwrap();

@@ -6,9 +6,9 @@
 #[cfg(not(feature = "std"))]
 use std::vec::Vec;
 
-use aes_gcm::{Aes128Gcm, Aes256Gcm, KeyInit, Nonce, aead::Aead};
+use aes_gcm::{aead::Aead, Aes128Gcm, Aes256Gcm, KeyInit, Nonce};
 use chacha20poly1305::{ChaCha20Poly1305, Key, Nonce as ChaNonce};
-use vefas_types::{VefasResult, VefasError, errors::CryptoErrorType};
+use vefas_types::{errors::CryptoErrorType, VefasError, VefasResult};
 
 /// Encrypt data using AES-128-GCM
 ///
@@ -29,19 +29,26 @@ pub fn aes_128_gcm_encrypt(
     aad: &[u8],
     plaintext: &[u8],
 ) -> VefasResult<Vec<u8>> {
-    let cipher = Aes128Gcm::new_from_slice(key)
-        .map_err(|_| VefasError::crypto_error(
-            CryptoErrorType::InvalidKeyLength,
-            "invalid AES-128 key",
-        ))?;
+    let cipher = Aes128Gcm::new_from_slice(key).map_err(|_| {
+        VefasError::crypto_error(CryptoErrorType::InvalidKeyLength, "invalid AES-128 key")
+    })?;
 
     let nonce = Nonce::from_slice(nonce);
 
-    cipher.encrypt(nonce, aes_gcm::aead::Payload { msg: plaintext, aad })
-        .map_err(|_| VefasError::crypto_error(
-            CryptoErrorType::CipherFailed,
-            "AES-128-GCM encryption failed",
-        ))
+    cipher
+        .encrypt(
+            nonce,
+            aes_gcm::aead::Payload {
+                msg: plaintext,
+                aad,
+            },
+        )
+        .map_err(|_| {
+            VefasError::crypto_error(
+                CryptoErrorType::CipherFailed,
+                "AES-128-GCM encryption failed",
+            )
+        })
 }
 
 /// Decrypt data using AES-128-GCM
@@ -63,19 +70,26 @@ pub fn aes_128_gcm_decrypt(
     aad: &[u8],
     ciphertext: &[u8],
 ) -> VefasResult<Vec<u8>> {
-    let cipher = Aes128Gcm::new_from_slice(key)
-        .map_err(|_| VefasError::crypto_error(
-            CryptoErrorType::InvalidKeyLength,
-            "invalid AES-128 key",
-        ))?;
+    let cipher = Aes128Gcm::new_from_slice(key).map_err(|_| {
+        VefasError::crypto_error(CryptoErrorType::InvalidKeyLength, "invalid AES-128 key")
+    })?;
 
     let nonce = Nonce::from_slice(nonce);
 
-    cipher.decrypt(nonce, aes_gcm::aead::Payload { msg: ciphertext, aad })
-        .map_err(|_| VefasError::crypto_error(
-            CryptoErrorType::CipherFailed,
-            "AES-128-GCM decryption failed",
-        ))
+    cipher
+        .decrypt(
+            nonce,
+            aes_gcm::aead::Payload {
+                msg: ciphertext,
+                aad,
+            },
+        )
+        .map_err(|_| {
+            VefasError::crypto_error(
+                CryptoErrorType::CipherFailed,
+                "AES-128-GCM decryption failed",
+            )
+        })
 }
 
 /// Encrypt data using AES-256-GCM
@@ -97,19 +111,26 @@ pub fn aes_256_gcm_encrypt(
     aad: &[u8],
     plaintext: &[u8],
 ) -> VefasResult<Vec<u8>> {
-    let cipher = Aes256Gcm::new_from_slice(key)
-        .map_err(|_| VefasError::crypto_error(
-            CryptoErrorType::InvalidKeyLength,
-            "invalid AES-256 key",
-        ))?;
+    let cipher = Aes256Gcm::new_from_slice(key).map_err(|_| {
+        VefasError::crypto_error(CryptoErrorType::InvalidKeyLength, "invalid AES-256 key")
+    })?;
 
     let nonce = Nonce::from_slice(nonce);
 
-    cipher.encrypt(nonce, aes_gcm::aead::Payload { msg: plaintext, aad })
-        .map_err(|_| VefasError::crypto_error(
-            CryptoErrorType::CipherFailed,
-            "AES-256-GCM encryption failed",
-        ))
+    cipher
+        .encrypt(
+            nonce,
+            aes_gcm::aead::Payload {
+                msg: plaintext,
+                aad,
+            },
+        )
+        .map_err(|_| {
+            VefasError::crypto_error(
+                CryptoErrorType::CipherFailed,
+                "AES-256-GCM encryption failed",
+            )
+        })
 }
 
 /// Decrypt data using AES-256-GCM
@@ -131,19 +152,26 @@ pub fn aes_256_gcm_decrypt(
     aad: &[u8],
     ciphertext: &[u8],
 ) -> VefasResult<Vec<u8>> {
-    let cipher = Aes256Gcm::new_from_slice(key)
-        .map_err(|_| VefasError::crypto_error(
-            CryptoErrorType::InvalidKeyLength,
-            "invalid AES-256 key",
-        ))?;
+    let cipher = Aes256Gcm::new_from_slice(key).map_err(|_| {
+        VefasError::crypto_error(CryptoErrorType::InvalidKeyLength, "invalid AES-256 key")
+    })?;
 
     let nonce = Nonce::from_slice(nonce);
 
-    cipher.decrypt(nonce, aes_gcm::aead::Payload { msg: ciphertext, aad })
-        .map_err(|_| VefasError::crypto_error(
-            CryptoErrorType::CipherFailed,
-            "AES-256-GCM decryption failed",
-        ))
+    cipher
+        .decrypt(
+            nonce,
+            aes_gcm::aead::Payload {
+                msg: ciphertext,
+                aad,
+            },
+        )
+        .map_err(|_| {
+            VefasError::crypto_error(
+                CryptoErrorType::CipherFailed,
+                "AES-256-GCM decryption failed",
+            )
+        })
 }
 
 /// Encrypt data using ChaCha20Poly1305
@@ -168,11 +196,20 @@ pub fn chacha20_poly1305_encrypt(
     let cipher = ChaCha20Poly1305::new(Key::from_slice(key));
     let nonce = ChaNonce::from_slice(nonce);
 
-    cipher.encrypt(nonce, chacha20poly1305::aead::Payload { msg: plaintext, aad })
-        .map_err(|_| VefasError::crypto_error(
-            CryptoErrorType::CipherFailed,
-            "ChaCha20Poly1305 encryption failed",
-        ))
+    cipher
+        .encrypt(
+            nonce,
+            chacha20poly1305::aead::Payload {
+                msg: plaintext,
+                aad,
+            },
+        )
+        .map_err(|_| {
+            VefasError::crypto_error(
+                CryptoErrorType::CipherFailed,
+                "ChaCha20Poly1305 encryption failed",
+            )
+        })
 }
 
 /// Decrypt data using ChaCha20Poly1305
@@ -197,11 +234,20 @@ pub fn chacha20_poly1305_decrypt(
     let cipher = ChaCha20Poly1305::new(Key::from_slice(key));
     let nonce = ChaNonce::from_slice(nonce);
 
-    cipher.decrypt(nonce, chacha20poly1305::aead::Payload { msg: ciphertext, aad })
-        .map_err(|_| VefasError::crypto_error(
-            CryptoErrorType::CipherFailed,
-            "ChaCha20Poly1305 decryption failed",
-        ))
+    cipher
+        .decrypt(
+            nonce,
+            chacha20poly1305::aead::Payload {
+                msg: ciphertext,
+                aad,
+            },
+        )
+        .map_err(|_| {
+            VefasError::crypto_error(
+                CryptoErrorType::CipherFailed,
+                "ChaCha20Poly1305 decryption failed",
+            )
+        })
 }
 
 #[cfg(test)]

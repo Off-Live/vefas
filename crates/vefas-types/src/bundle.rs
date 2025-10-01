@@ -11,16 +11,19 @@
 //! - **Direct**: Raw captured data without interpretation or transformation
 //! - **Efficient**: Optimized for zkVM proof generation
 
-use alloc::{string::{String, ToString}, vec::Vec, format};
+use alloc::{
+    format,
+    string::{String, ToString},
+    vec::Vec,
+};
 use core::mem::size_of;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    errors::{VefasError, VefasResult},
-    MAX_DOMAIN_LENGTH,
-    VEFAS_PROTOCOL_VERSION,
-    utils::format_decimal,
     compression::{BundleCompressor, CompressedBundle, CompressionStats},
+    errors::{VefasError, VefasResult},
+    utils::format_decimal,
+    MAX_DOMAIN_LENGTH, VEFAS_PROTOCOL_VERSION,
 };
 
 /// Maximum size for individual handshake messages
@@ -185,14 +188,17 @@ impl VefasCanonicalBundle {
         };
 
         // Serialize uncompressed data to check if compression would be beneficial
-        let serialized_data = serde_json::to_vec(&uncompressed_data)
-            .map_err(|e| VefasError::serialization_error(&format!("Failed to serialize bundle data: {}", e)))?;
+        let serialized_data = serde_json::to_vec(&uncompressed_data).map_err(|e| {
+            VefasError::serialization_error(&format!("Failed to serialize bundle data: {}", e))
+        })?;
 
         // Apply compression if beneficial
-        let (storage, compression_version) = if BundleCompressor::should_compress(&serialized_data) {
+        let (storage, compression_version) = if BundleCompressor::should_compress(&serialized_data)
+        {
             match BundleCompressor::compress(&serialized_data) {
                 Ok(compressed_bundle) => {
-                    let stats = BundleCompressor::compression_stats(&serialized_data, &compressed_bundle);
+                    let stats =
+                        BundleCompressor::compression_stats(&serialized_data, &compressed_bundle);
                     (
                         BundleStorage::Compressed {
                             compressed_data: compressed_bundle,
@@ -200,11 +206,11 @@ impl VefasCanonicalBundle {
                         },
                         1, // Compressed format version
                     )
-                },
+                }
                 Err(_) => {
                     // If compression fails, fall back to uncompressed
                     (BundleStorage::Uncompressed(uncompressed_data), 0)
-                },
+                }
             }
         } else {
             (BundleStorage::Uncompressed(uncompressed_data), 0)
@@ -228,11 +234,17 @@ impl VefasCanonicalBundle {
     pub fn get_bundle_data(&self) -> VefasResult<UncompressedBundleData> {
         match &self.storage {
             BundleStorage::Uncompressed(data) => Ok(data.clone()),
-            BundleStorage::Compressed { compressed_data, .. } => {
+            BundleStorage::Compressed {
+                compressed_data, ..
+            } => {
                 let decompressed_bytes = BundleCompressor::decompress(compressed_data)?;
-                serde_json::from_slice(&decompressed_bytes)
-                    .map_err(|e| VefasError::serialization_error(&format!("Failed to deserialize decompressed bundle: {}", e)))
-            },
+                serde_json::from_slice(&decompressed_bytes).map_err(|e| {
+                    VefasError::serialization_error(&format!(
+                        "Failed to deserialize decompressed bundle: {}",
+                        e
+                    ))
+                })
+            }
         }
     }
 
@@ -244,7 +256,9 @@ impl VefasCanonicalBundle {
     /// Get compression statistics if bundle is compressed
     pub fn compression_stats(&self) -> Option<&CompressionStats> {
         match &self.storage {
-            BundleStorage::Compressed { compression_stats, .. } => Some(compression_stats),
+            BundleStorage::Compressed {
+                compression_stats, ..
+            } => Some(compression_stats),
             BundleStorage::Uncompressed(_) => None,
         }
     }
@@ -256,20 +270,22 @@ impl VefasCanonicalBundle {
         }
 
         let data = self.get_bundle_data()?;
-        let serialized_data = serde_json::to_vec(&data)
-            .map_err(|e| VefasError::serialization_error(&format!("Failed to serialize bundle data: {}", e)))?;
+        let serialized_data = serde_json::to_vec(&data).map_err(|e| {
+            VefasError::serialization_error(&format!("Failed to serialize bundle data: {}", e))
+        })?;
 
         if BundleCompressor::should_compress(&serialized_data) {
             match BundleCompressor::compress(&serialized_data) {
                 Ok(compressed_bundle) => {
-                    let stats = BundleCompressor::compression_stats(&serialized_data, &compressed_bundle);
+                    let stats =
+                        BundleCompressor::compression_stats(&serialized_data, &compressed_bundle);
                     self.storage = BundleStorage::Compressed {
                         compressed_data: compressed_bundle,
                         compression_stats: stats,
                     };
                     self.compression_version = 1;
                     Ok(true)
-                },
+                }
                 Err(_) => Ok(false), // Compression failed
             }
         } else {
@@ -340,20 +356,29 @@ impl VefasCanonicalBundle {
     pub fn validate(&self) -> VefasResult<()> {
         // Check protocol version
         if self.version != VEFAS_PROTOCOL_VERSION {
-            return Err(VefasError::version_mismatch(VEFAS_PROTOCOL_VERSION, self.version));
+            return Err(VefasError::version_mismatch(
+                VEFAS_PROTOCOL_VERSION,
+                self.version,
+            ));
         }
 
         // Validate compression version
         if self.compression_version > 1 {
             return Err(VefasError::invalid_input(
                 "compression_version",
-                &format!("Unsupported compression version: {}", self.compression_version),
+                &format!(
+                    "Unsupported compression version: {}",
+                    self.compression_version
+                ),
             ));
         }
 
         // Validate domain name
         if self.domain.is_empty() {
-            return Err(VefasError::invalid_input("domain", "Domain cannot be empty"));
+            return Err(VefasError::invalid_input(
+                "domain",
+                "Domain cannot be empty",
+            ));
         }
 
         if self.domain.len() > MAX_DOMAIN_LENGTH {
@@ -371,7 +396,8 @@ impl VefasCanonicalBundle {
         if !(100..=599).contains(&self.expected_status) {
             return Err(VefasError::http_error(
                 crate::errors::HttpErrorType::InvalidStatusCode,
-                &("Invalid HTTP status code: ".to_string() + &format_decimal(self.expected_status as usize)),
+                &("Invalid HTTP status code: ".to_string()
+                    + &format_decimal(self.expected_status as usize)),
             ));
         }
 
@@ -385,8 +411,8 @@ impl VefasCanonicalBundle {
 
         // Validate storage format matches compression version
         match (&self.storage, self.compression_version) {
-            (BundleStorage::Uncompressed(_), 0) => {}, // Valid
-            (BundleStorage::Compressed { .. }, v) if v > 0 => {}, // Valid
+            (BundleStorage::Uncompressed(_), 0) => {} // Valid
+            (BundleStorage::Compressed { .. }, v) if v > 0 => {} // Valid
             _ => {
                 return Err(VefasError::invalid_input(
                     "storage_format",
@@ -396,7 +422,10 @@ impl VefasCanonicalBundle {
         }
 
         // Validate compressed bundle if present
-        if let BundleStorage::Compressed { compressed_data, .. } = &self.storage {
+        if let BundleStorage::Compressed {
+            compressed_data, ..
+        } = &self.storage
+        {
             compressed_data.validate()?;
         }
 
@@ -413,7 +442,10 @@ impl VefasCanonicalBundle {
             self.validate_handshake_message(&data.certificate_msg, "certificate_msg")?;
         }
         if !data.certificate_verify_msg.is_empty() {
-            self.validate_handshake_message(&data.certificate_verify_msg, "certificate_verify_msg")?;
+            self.validate_handshake_message(
+                &data.certificate_verify_msg,
+                "certificate_verify_msg",
+            )?;
         }
         if !data.server_finished_msg.is_empty() {
             self.validate_handshake_message(&data.server_finished_msg, "server_finished_msg")?;
@@ -458,15 +490,18 @@ impl VefasCanonicalBundle {
                     + data.certificate_msg.len()
                     + data.certificate_verify_msg.len()
                     + data.server_finished_msg.len()
-                    + data.certificate_chain.iter().map(|cert| cert.len()).sum::<usize>()
+                    + data
+                        .certificate_chain
+                        .iter()
+                        .map(|cert| cert.len())
+                        .sum::<usize>()
                     + data.encrypted_request.len()
                     + data.encrypted_response.len()
-            },
-            BundleStorage::Compressed { compressed_data, compression_stats: _ } => {
-                base_size
-                    + compressed_data.memory_footprint()
-                    + size_of::<CompressionStats>()
-            },
+            }
+            BundleStorage::Compressed {
+                compressed_data,
+                compression_stats: _,
+            } => base_size + compressed_data.memory_footprint() + size_of::<CompressionStats>(),
         }
     }
 
@@ -477,7 +512,7 @@ impl VefasCanonicalBundle {
     /// Note: The hash is computed from the uncompressed data to ensure consistency
     /// regardless of compression status.
     pub fn bundle_hash(&self) -> VefasResult<[u8; 32]> {
-        use sha2::{Sha256, Digest};
+        use sha2::{Digest, Sha256};
 
         let data = self.get_bundle_data()?;
         let mut hasher = Sha256::new();
@@ -528,7 +563,7 @@ impl VefasCanonicalBundle {
                 // Look for TLS 1.3 version in ServerHello
                 // This is a simplified check - real implementation would parse properly
                 server_hello.windows(2).any(|window| window == [0x03, 0x04])
-            },
+            }
             Err(_) => false,
         }
     }
@@ -625,11 +660,7 @@ pub struct BundleMetadata {
 
 impl BundleMetadata {
     /// Create new bundle metadata
-    pub fn new(
-        capture_source: String,
-        capture_platform: String,
-        rustls_version: String,
-    ) -> Self {
+    pub fn new(capture_source: String, capture_platform: String, rustls_version: String) -> Self {
         Self {
             capture_source,
             capture_platform,
@@ -685,7 +716,11 @@ impl BundleMetadata {
             + self.capture_source.len()
             + self.capture_platform.len()
             + self.rustls_version.len()
-            + self.custom_fields.iter().map(|(k, v)| k.len() + v.len()).sum::<usize>()
+            + self
+                .custom_fields
+                .iter()
+                .map(|(k, v)| k.len() + v.len())
+                .sum::<usize>()
     }
 }
 
@@ -702,7 +737,7 @@ impl Default for BundleMetadata {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use alloc::{vec, string::ToString};
+    use alloc::{string::ToString, vec};
 
     fn create_test_bundle() -> VefasCanonicalBundle {
         VefasCanonicalBundle::new(
@@ -723,11 +758,12 @@ mod tests {
                 v.extend_from_slice(&[0u8; 48]);
                 v
             },
-            "example.com".to_string(),          // domain
-            1640995200,                         // timestamp (2022-01-01)
-            200,                                // expected_status
-            [2u8; 32],                          // verifier_nonce
-        ).unwrap()
+            "example.com".to_string(), // domain
+            1640995200,                // timestamp (2022-01-01)
+            200,                       // expected_status
+            [2u8; 32],                 // verifier_nonce
+        )
+        .unwrap()
     }
 
     fn create_test_bundle_with_compression() -> VefasCanonicalBundle {
@@ -746,20 +782,21 @@ mod tests {
         };
 
         VefasCanonicalBundle::new_with_compression(
-            large_data.clone(), // client_hello
-            large_data.clone(), // server_hello
-            large_data.clone(), // certificate_msg
-            large_data.clone(), // certificate_verify_msg
-            large_data.clone(), // server_finished_msg
-            [1u8; 32],          // client_private_key
+            large_data.clone(),                           // client_hello
+            large_data.clone(),                           // server_hello
+            large_data.clone(),                           // certificate_msg
+            large_data.clone(),                           // certificate_verify_msg
+            large_data.clone(),                           // server_finished_msg
+            [1u8; 32],                                    // client_private_key
             vec![large_data.clone(), large_data.clone()], // certificate_chain
-            create_valid_tls_record(&large_data), // encrypted_request
-            create_valid_tls_record(&large_data), // encrypted_response
-            "example.com".to_string(), // domain
-            1640995200,                // timestamp (2022-01-01)
-            200,                       // expected_status
-            [2u8; 32],                 // verifier_nonce
-        ).unwrap()
+            create_valid_tls_record(&large_data),         // encrypted_request
+            create_valid_tls_record(&large_data),         // encrypted_response
+            "example.com".to_string(),                    // domain
+            1640995200,                                   // timestamp (2022-01-01)
+            200,                                          // expected_status
+            [2u8; 32],                                    // verifier_nonce
+        )
+        .unwrap()
     }
 
     #[test]
@@ -855,7 +892,8 @@ mod tests {
             1640995200,
             200,
             [2u8; 32],
-        ).unwrap();
+        )
+        .unwrap();
         assert!(bundle.validate().is_ok());
     }
 

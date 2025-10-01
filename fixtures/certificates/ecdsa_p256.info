@@ -1,0 +1,21 @@
+{
+  "certificate_file": "ecdsa_p256.crt",
+  "private_key_file": "ecdsa_p256.key",
+  "algorithm": "id-ecPublicKey",
+  "key_size": "(256 bit)",
+  "subject": "C = US, ST = CA, L = San Francisco, O = Vefas Labs, OU = Testing, CN = tls13-test.local",
+  "issuer": "C = US, ST = CA, L = San Francisco, O = Vefas Labs, OU = Testing, CN = tls13-test.local",
+  "valid_from": "Oct  1 09:50:19 2025 GMT",
+  "valid_to": "Oct  1 09:50:19 2026 GMT",
+  "fingerprint_sha256": "20:99:4A:D6:50:9C:43:E5:7F:26:0B:05:36:25:9C:60:31:5E:F7:E5:DB:67:29:AD:07:2C:2C:1E:2F:44:34:07",
+  "fingerprint_sha1": "8E:2D:64:7B:CE:2E:E8:66:21:70:0E:5C:37:7E:36:29:DD:B2:57:41",
+  "serial_number": "057783BD195E0F7BB8805237D009E4BAB79A5861",
+  "tls13_compatible": true,
+  "supported_cipher_suites": [
+    "TLS_AES_128_GCM_SHA256",
+    "TLS_AES_256_GCM_SHA384",
+    "TLS_CHACHA20_POLY1305_SHA256",
+    "TLS_AES_128_CCM_SHA256",
+    "TLS_AES_128_CCM_8_SHA256"
+  ]
+}

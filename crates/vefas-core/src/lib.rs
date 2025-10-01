@@ -84,33 +84,33 @@ mod bundle;
 #[cfg(feature = "std")]
 mod validation;
 
-pub use error::{VefasCoreError, Result};
+pub use error::{Result, VefasCoreError};
 
 #[cfg(feature = "std")]
-pub use client::{VefasClient, TlsConnection};
+pub use client::{TlsConnection, VefasClient};
 
 #[cfg(feature = "std")]
 pub use transport::TlsTee;
 
 #[cfg(feature = "std")]
-pub use keylog::{VefasKeyLog, SecretEntry};
+pub use keylog::{SecretEntry, VefasKeyLog};
 
 #[cfg(feature = "std")]
 pub use session::SessionData;
 
 #[cfg(feature = "std")]
-pub use http::{HttpProcessor, HttpData, HttpRequest, HttpResponse, HttpHeaders};
+pub use http::{HttpData, HttpHeaders, HttpProcessor, HttpRequest, HttpResponse};
 
 #[cfg(feature = "std")]
 pub use records::{
-    TlsRecordParser, TlsRecord, HandshakeMessage, ContentType, HandshakeType,
-    TlsExtension, TlsExtensionType
+    ContentType, HandshakeMessage, HandshakeType, TlsExtension, TlsExtensionType, TlsRecord,
+    TlsRecordParser,
 };
 
 #[cfg(feature = "std")]
-pub use bundle::{BundleBuilder, BundleComponents, SecretData, BundleMetadata};
+pub use bundle::{BundleBuilder, BundleComponents, BundleMetadata, SecretData};
 
 #[cfg(feature = "std")]
 pub use validation::{
-    BundleValidator, ValidationReport, ValidationError, ValidationWarning, ValidationMetadata
+    BundleValidator, ValidationError, ValidationMetadata, ValidationReport, ValidationWarning,
 };

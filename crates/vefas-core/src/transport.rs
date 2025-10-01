@@ -11,16 +11,16 @@
 //! - **Zero-copy where possible**: Minimal performance overhead
 //! - **Production-ready**: Comprehensive error handling and validation
 
-use crate::error::{VefasCoreError, Result};
+use crate::error::{Result, VefasCoreError};
+use std::io::{Error as IoError, ErrorKind, Read, Write};
 use std::sync::{Arc, Mutex};
-use std::io::{Read, Write, Error as IoError, ErrorKind};
 
-#[cfg(feature = "std")]
-use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 #[cfg(feature = "std")]
 use std::pin::Pin;
 #[cfg(feature = "std")]
 use std::task::{Context, Poll};
+#[cfg(feature = "std")]
+use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 
 /// Transport wrapper that captures all bytes sent and received
 ///
@@ -64,7 +64,8 @@ impl<T: Read + Write> TlsTee<T> {
 
     /// Get a copy of all outbound bytes (client → server)
     pub fn outbound_bytes(&self) -> Result<Vec<u8>> {
-        Ok(self.outbound_log
+        Ok(self
+            .outbound_log
             .lock()
             .map_err(|e| VefasCoreError::internal(&format!("Failed to lock outbound log: {}", e)))?
             .clone())
@@ -72,7 +73,8 @@ impl<T: Read + Write> TlsTee<T> {
 
     /// Get a copy of all inbound bytes (server → client)
     pub fn inbound_bytes(&self) -> Result<Vec<u8>> {
-        Ok(self.inbound_log
+        Ok(self
+            .inbound_log
             .lock()
             .map_err(|e| VefasCoreError::internal(&format!("Failed to lock inbound log: {}", e)))?
             .clone())
@@ -80,7 +82,8 @@ impl<T: Read + Write> TlsTee<T> {
 
     /// Get the total number of outbound bytes captured
     pub fn outbound_len(&self) -> Result<usize> {
-        Ok(self.outbound_log
+        Ok(self
+            .outbound_log
             .lock()
             .map_err(|e| VefasCoreError::internal(&format!("Failed to lock outbound log: {}", e)))?
             .len())
@@ -88,7 +91,8 @@ impl<T: Read + Write> TlsTee<T> {
 
     /// Get the total number of inbound bytes captured
     pub fn inbound_len(&self) -> Result<usize> {
-        Ok(self.inbound_log
+        Ok(self
+            .inbound_log
             .lock()
             .map_err(|e| VefasCoreError::internal(&format!("Failed to lock inbound log: {}", e)))?
             .len())
@@ -96,42 +100,42 @@ impl<T: Read + Write> TlsTee<T> {
 
     /// Get number of outbound bytes dropped due to cap
     pub fn dropped_outbound(&self) -> Result<usize> {
-        Ok(*self.dropped_outbound
-            .lock()
-            .map_err(|e| VefasCoreError::internal(&format!("Failed to lock dropped_outbound: {}", e)))?)
+        Ok(*self.dropped_outbound.lock().map_err(|e| {
+            VefasCoreError::internal(&format!("Failed to lock dropped_outbound: {}", e))
+        })?)
     }
 
     /// Get number of inbound bytes dropped due to cap
     pub fn dropped_inbound(&self) -> Result<usize> {
-        Ok(*self.dropped_inbound
-            .lock()
-            .map_err(|e| VefasCoreError::internal(&format!("Failed to lock dropped_inbound: {}", e)))?)
+        Ok(*self.dropped_inbound.lock().map_err(|e| {
+            VefasCoreError::internal(&format!("Failed to lock dropped_inbound: {}", e))
+        })?)
     }
 
     /// Clear captured bytes (useful for memory management)
     pub fn clear_logs(&self) -> Result<()> {
         {
-            let mut outbound = self.outbound_log
-                .lock()
-                .map_err(|e| VefasCoreError::internal(&format!("Failed to lock outbound log: {}", e)))?;
+            let mut outbound = self.outbound_log.lock().map_err(|e| {
+                VefasCoreError::internal(&format!("Failed to lock outbound log: {}", e))
+            })?;
             outbound.clear();
         }
         {
-            let mut inbound = self.inbound_log
-                .lock()
-                .map_err(|e| VefasCoreError::internal(&format!("Failed to lock inbound log: {}", e)))?;
+            let mut inbound = self.inbound_log.lock().map_err(|e| {
+                VefasCoreError::internal(&format!("Failed to lock inbound log: {}", e))
+            })?;
             inbound.clear();
         }
         {
-            let mut d = self.dropped_outbound
-                .lock()
-                .map_err(|e| VefasCoreError::internal(&format!("Failed to lock dropped_outbound: {}", e)))?;
+            let mut d = self.dropped_outbound.lock().map_err(|e| {
+                VefasCoreError::internal(&format!("Failed to lock dropped_outbound: {}", e))
+            })?;
             *d = 0;
         }
         {
-            let mut d = self.dropped_inbound
-                .lock()
-                .map_err(|e| VefasCoreError::internal(&format!("Failed to lock dropped_inbound: {}", e)))?;
+            let mut d = self.dropped_inbound.lock().map_err(|e| {
+                VefasCoreError::internal(&format!("Failed to lock dropped_inbound: {}", e))
+            })?;
             *d = 0;
         }
         Ok(())
@@ -144,12 +148,14 @@ impl<T: Read + Write> TlsTee<T> {
 
     /// Consume the TlsTee and return the inner transport plus captured bytes
     pub fn into_parts(self) -> Result<(T, Vec<u8>, Vec<u8>)> {
-        let outbound = self.outbound_log
+        let outbound = self
+            .outbound_log
             .lock()
             .map_err(|e| VefasCoreError::internal(&format!("Failed to lock outbound log: {}", e)))?
             .clone();
 
-        let inbound = self.inbound_log
+        let inbound = self
+            .inbound_log
             .lock()
             .map_err(|e| VefasCoreError::internal(&format!("Failed to lock inbound log: {}", e)))?
             .clone();
@@ -173,14 +179,16 @@ impl<T: Read + Write> Read for TlsTee<T> {
                     let drop = overflow.min(inbound_log.len());
                     if drop > 0 {
                         inbound_log.drain(0..drop);
-                        if let Ok(mut dropped) = self.dropped_inbound.lock() { *dropped += drop; }
+                        if let Ok(mut dropped) = self.dropped_inbound.lock() {
+                            *dropped += drop;
+                        }
                     }
                 }
                 inbound_log.extend_from_slice(data_to_log);
             } else {
                 return Err(IoError::new(
                     ErrorKind::Other,
-                    "Failed to acquire inbound log lock"
+                    "Failed to acquire inbound log lock",
                 ));
             }
         }
@@ -203,14 +211,16 @@ impl<T: Read + Write> Write for TlsTee<T> {
                     let drop = overflow.min(outbound_log.len());
                     if drop > 0 {
                         outbound_log.drain(0..drop);
-                        if let Ok(mut dropped) = self.dropped_outbound.lock() { *dropped += drop; }
+                        if let Ok(mut dropped) = self.dropped_outbound.lock() {
+                            *dropped += drop;
+                        }
                     }
                 }
                 outbound_log.extend_from_slice(data_to_log);
             } else {
                 return Err(IoError::new(
                     ErrorKind::Other,
-                    "Failed to acquire outbound log lock"
+                    "Failed to acquire outbound log lock",
                 ));
             }
         }
@@ -253,21 +263,36 @@ impl<T: AsyncRead + AsyncWrite + Unpin> AsyncTlsTee<T> {
     }
 
     pub fn outbound_bytes(&self) -> Result<Vec<u8>> {
-        Ok(self.outbound_log.lock().map_err(|e| VefasCoreError::internal(&format!("Failed to lock outbound log: {}", e)))?.clone())
+        Ok(self
+            .outbound_log
+            .lock()
+            .map_err(|e| VefasCoreError::internal(&format!("Failed to lock outbound log: {}", e)))?
+            .clone())
     }
 
     pub fn inbound_bytes(&self) -> Result<Vec<u8>> {
-        Ok(self.inbound_log.lock().map_err(|e| VefasCoreError::internal(&format!("Failed to lock inbound log: {}", e)))?.clone())
+        Ok(self
+            .inbound_log
+            .lock()
+            .map_err(|e| VefasCoreError::internal(&format!("Failed to lock inbound log: {}", e)))?
+            .clone())
     }
 
-    fn enforce_cap(log: &mut Vec<u8>, cap: usize, drop_counter: &Arc<Mutex<usize>>, incoming_len: usize) {
+    fn enforce_cap(
+        log: &mut Vec<u8>,
+        cap: usize,
+        drop_counter: &Arc<Mutex<usize>>,
+        incoming_len: usize,
+    ) {
         let needed = log.len().saturating_add(incoming_len);
         if needed > cap {
             let overflow = needed - cap;
             let drop = overflow.min(log.len());
             if drop > 0 {
                 log.drain(0..drop);
-                if let Ok(mut d) = drop_counter.lock() { *d += drop; }
+                if let Ok(mut d) = drop_counter.lock() {
+                    *d += drop;
+                }
             }
         }
     }
@@ -275,7 +300,11 @@ impl<T: AsyncRead + AsyncWrite + Unpin> AsyncTlsTee<T> {
 
 #[cfg(feature = "std")]
 impl<T: AsyncRead + AsyncWrite + Unpin> AsyncRead for AsyncTlsTee<T> {
-    fn poll_read(self: Pin<&mut Self>, cx: &mut Context<'_>, buf: &mut ReadBuf<'_>) -> Poll<std::io::Result<()>> {
+    fn poll_read(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &mut ReadBuf<'_>,
+    ) -> Poll<std::io::Result<()>> {
         let me = self.get_mut();
         let mut tmp = ReadBuf::new(buf.initialize_unfilled());
         match Pin::new(&mut me.inner).poll_read(cx, &mut tmp) {
@@ -283,10 +312,18 @@ impl<T: AsyncRead + AsyncWrite + Unpin> AsyncRead for AsyncTlsTee<T> {
                 let filled = tmp.filled().len();
                 if filled > 0 {
                     if let Ok(mut inbound) = me.inbound_log.lock() {
-                        AsyncTlsTee::<T>::enforce_cap(&mut inbound, me.max_log_bytes, &me.dropped_inbound, filled);
+                        AsyncTlsTee::<T>::enforce_cap(
+                            &mut inbound,
+                            me.max_log_bytes,
+                            &me.dropped_inbound,
+                            filled,
+                        );
                         inbound.extend_from_slice(&tmp.filled());
                     } else {
-                        return Poll::Ready(Err(IoError::new(ErrorKind::Other, "Failed to acquire inbound log lock")));
+                        return Poll::Ready(Err(IoError::new(
+                            ErrorKind::Other,
+                            "Failed to acquire inbound log lock",
+                        )));
                     }
                     buf.advance(filled);
                 }
@@ -299,16 +336,28 @@ impl<T: AsyncRead + AsyncWrite + Unpin> AsyncRead for AsyncTlsTee<T> {
 
 #[cfg(feature = "std")]
 impl<T: AsyncRead + AsyncWrite + Unpin> AsyncWrite for AsyncTlsTee<T> {
-    fn poll_write(self: Pin<&mut Self>, cx: &mut Context<'_>, data: &[u8]) -> Poll<std::io::Result<usize>> {
+    fn poll_write(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        data: &[u8],
+    ) -> Poll<std::io::Result<usize>> {
         let me = self.get_mut();
         match Pin::new(&mut me.inner).poll_write(cx, data) {
             Poll::Ready(Ok(n)) => {
                 if n > 0 {
                     if let Ok(mut outbound) = me.outbound_log.lock() {
-                        AsyncTlsTee::<T>::enforce_cap(&mut outbound, me.max_log_bytes, &me.dropped_outbound, n);
+                        AsyncTlsTee::<T>::enforce_cap(
+                            &mut outbound,
+                            me.max_log_bytes,
+                            &me.dropped_outbound,
+                            n,
+                        );
                         outbound.extend_from_slice(&data[..n]);
                     } else {
-                        return Poll::Ready(Err(IoError::new(ErrorKind::Other, "Failed to acquire outbound log lock")));
+                        return Poll::Ready(Err(IoError::new(
+                            ErrorKind::Other,
+                            "Failed to acquire outbound log lock",
+                        )));
                     }
                 }
                 Poll::Ready(Ok(n))

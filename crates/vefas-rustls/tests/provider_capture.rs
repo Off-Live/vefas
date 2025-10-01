@@ -1,10 +1,12 @@
-use vefas_rustls::{new_provider, ProviderConfig, EphemeralSeed};
 use rustls::crypto::SupportedKxGroup;
+use vefas_rustls::{new_provider, EphemeralSeed, ProviderConfig};
 
 #[test]
 fn provider_builds_and_captures_seed() {
     let seed = [0x42u8; 32];
-    let (provider, capture) = new_provider(ProviderConfig { seed: Some(EphemeralSeed(seed)) });
+    let (provider, capture) = new_provider(ProviderConfig {
+        seed: Some(EphemeralSeed(seed)),
+    });
     // Provider should have at least one kx group (our capturing + base)
     assert!(!provider.kx_groups.is_empty());
 
@@ -18,5 +20,3 @@ fn provider_builds_and_captures_seed() {
     let captured = capture.lock().unwrap().clone();
     assert!(captured.is_some());
 }
-
-

@@ -4,9 +4,9 @@
 //! to detect buffer overflows, malformed input handling, and other security issues.
 
 use proptest::prelude::*;
+use std::collections::HashMap;
 use vefas_crypto::tls_parser::*;
 use vefas_types::{TlsHandshakeMessage, TlsRecord, VefasCanonicalBundle};
-use std::collections::HashMap;
 
 /// Maximum size for fuzzing input to prevent memory exhaustion
 const MAX_FUZZ_SIZE: usize = 65536;
@@ -19,54 +19,66 @@ fn arbitrary_bytes() -> impl Strategy<Value = Vec<u8>> {
 /// Fuzzing strategy for malformed TLS records
 fn malformed_tls_record() -> impl Strategy<Value = Vec<u8>> {
     (
-        0u8..=255,  // content_type
-        0u16..=65535, // version
-        0u16..=65535, // length (can be wrong)
+        0u8..=255,         // content_type
+        0u16..=65535,      // version
+        0u16..=65535,      // length (can be wrong)
         arbitrary_bytes(), // payload
-    ).prop_map(|(content_type, version, length, mut payload)| {
-        let mut record = Vec::new();
-        record.push(content_type);
-        record.extend_from_slice(&version.to_be_bytes());
-        record.extend_from_slice(&length.to_be_bytes());
+    )
+        .prop_map(|(content_type, version, length, mut payload)| {
+            let mut record = Vec::new();
+            record.push(content_type);
+            record.extend_from_slice(&version.to_be_bytes());
+            record.extend_from_slice(&length.to_be_bytes());
 
-        // Sometimes make payload size mismatch declared length
-        if !payload.is_empty() && proptest::bool::ANY.new_tree(&mut proptest::test_runner::TestRunner::default()).unwrap().current() {
-            let wrong_size = (length as usize).saturating_add(1).min(MAX_FUZZ_SIZE);
-            payload.resize(wrong_size, 0);
-        }
+            // Sometimes make payload size mismatch declared length
+            if !payload.is_empty()
+                && proptest::bool::ANY
+                    .new_tree(&mut proptest::test_runner::TestRunner::default())
+                    .unwrap()
+                    .current()
+            {
+                let wrong_size = (length as usize).saturating_add(1).min(MAX_FUZZ_SIZE);
+                payload.resize(wrong_size, 0);
+            }
 
-        record.extend_from_slice(&payload);
-        record
-    })
+            record.extend_from_slice(&payload);
+            record
+        })
 }
 
 /// Fuzzing strategy for malformed handshake messages
 fn malformed_handshake_message() -> impl Strategy<Value = Vec<u8>> {
     (
-        0u8..=255,  // msg_type
-        0u32..=16777215, // length (24-bit)
+        0u8..=255,         // msg_type
+        0u32..=16777215,   // length (24-bit)
         arbitrary_bytes(), // payload
-    ).prop_map(|(msg_type, length, mut payload)| {
-        let mut message = Vec::new();
-        message.push(msg_type);
+    )
+        .prop_map(|(msg_type, length, mut payload)| {
+            let mut message = Vec::new();
+            message.push(msg_type);
 
-        // Encode 24-bit length (big-endian)
-        let length_bytes = [
-            ((length >> 16) & 0xFF) as u8,
-            ((length >> 8) & 0xFF) as u8,
-            (length & 0xFF) as u8,
-        ];
-        message.extend_from_slice(&length_bytes);
+            // Encode 24-bit length (big-endian)
+            let length_bytes = [
+                ((length >> 16) & 0xFF) as u8,
+                ((length >> 8) & 0xFF) as u8,
+                (length & 0xFF) as u8,
+            ];
+            message.extend_from_slice(&length_bytes);
 
-        // Sometimes create length/payload mismatches
-        if !payload.is_empty() && proptest::bool::ANY.new_tree(&mut proptest::test_runner::TestRunner::default()).unwrap().current() {
-            let wrong_size = (length as usize).saturating_add(1).min(MAX_FUZZ_SIZE);
-            payload.resize(wrong_size, 0);
-        }
+            // Sometimes create length/payload mismatches
+            if !payload.is_empty()
+                && proptest::bool::ANY
+                    .new_tree(&mut proptest::test_runner::TestRunner::default())
+                    .unwrap()
+                    .current()
+            {
+                let wrong_size = (length as usize).saturating_add(1).min(MAX_FUZZ_SIZE);
+                payload.resize(wrong_size, 0);
+            }
 
-        message.extend_from_slice(&payload);
-        message
-    })
+            message.extend_from_slice(&payload);
+            message
+        })
 }
 
 proptest! {
@@ -182,7 +194,10 @@ mod edge_case_tests {
                 let _ = parser.parse_handshake_message(&handshake);
             }
         });
-        assert!(result.is_ok(), "Should handle oversized handshake length gracefully");
+        assert!(
+            result.is_ok(),
+            "Should handle oversized handshake length gracefully"
+        );
     }
 
     #[test]
@@ -195,7 +210,10 @@ mod edge_case_tests {
                 let _ = parser.parse_record(&record);
             }
         });
-        assert!(result.is_ok(), "Should handle zero-length records gracefully");
+        assert!(
+            result.is_ok(),
+            "Should handle zero-length records gracefully"
+        );
 
         let handshake = vec![0x01, 0x00, 0x00, 0x00]; // Empty ClientHello
 
@@ -204,15 +222,18 @@ mod edge_case_tests {
                 let _ = parser.parse_handshake_message(&handshake);
             }
         });
-        assert!(result.is_ok(), "Should handle zero-length handshake gracefully");
+        assert!(
+            result.is_ok(),
+            "Should handle zero-length handshake gracefully"
+        );
     }
 
     #[test]
     fn test_malformed_certificate_chain() {
         // Test various malformed certificate scenarios
         let test_cases = vec![
-            vec![], // Empty certificate list
-            vec![0x00, 0x00, 0x00], // Zero-length certificate
+            vec![],                       // Empty certificate list
+            vec![0x00, 0x00, 0x00],       // Zero-length certificate
             vec![0xFF, 0xFF, 0xFF, 0x01], // Oversized certificate length with minimal data
             b"-----BEGIN CERTIFICATE-----\nmalformed\n-----END CERTIFICATE-----".to_vec(),
         ];
@@ -223,7 +244,10 @@ mod edge_case_tests {
                     let _ = parser.parse_certificate_chain(&case);
                 }
             });
-            assert!(result.is_ok(), "Should handle malformed certificates gracefully");
+            assert!(
+                result.is_ok(),
+                "Should handle malformed certificates gracefully"
+            );
         }
     }
 
@@ -237,10 +261,10 @@ mod edge_case_tests {
             handshake_messages: vec![],
             application_records: vec![vec![0xFF; 1000]], // Large record
             http_request_data: b"INVALID HTTP REQUEST".to_vec(), // Invalid HTTP
-            expected_status: 999, // Invalid status code
+            expected_status: 999,                        // Invalid status code
             session_keys: Default::default(),
             cipher_suite: "INVALID_CIPHER".to_string(), // Invalid cipher
-            tls_version: "1.4".to_string(), // Invalid version
+            tls_version: "1.4".to_string(),             // Invalid version
         };
 
         let result = std::panic::catch_unwind(|| {
@@ -248,7 +272,10 @@ mod edge_case_tests {
                 let _ = validator.validate_bundle(&bundle);
             }
         });
-        assert!(result.is_ok(), "Should handle inconsistent bundle data gracefully");
+        assert!(
+            result.is_ok(),
+            "Should handle inconsistent bundle data gracefully"
+        );
     }
 }
 
@@ -271,8 +298,14 @@ mod performance_tests {
         });
         let elapsed = start.elapsed();
 
-        assert!(result.is_ok(), "Should handle large input without panicking");
-        assert!(elapsed < Duration::from_secs(1), "Parsing should complete within 1 second");
+        assert!(
+            result.is_ok(),
+            "Should handle large input without panicking"
+        );
+        assert!(
+            elapsed < Duration::from_secs(1),
+            "Parsing should complete within 1 second"
+        );
     }
 
     #[test]
@@ -291,6 +324,9 @@ mod performance_tests {
                 let _ = parser.parse_record(&nested_record);
             }
         });
-        assert!(result.is_ok(), "Should handle deeply nested structures gracefully");
+        assert!(
+            result.is_ok(),
+            "Should handle deeply nested structures gracefully"
+        );
     }
 }

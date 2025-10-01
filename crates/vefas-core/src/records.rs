@@ -5,7 +5,7 @@
 //! according to RFC 8446.
 
 #[cfg(not(feature = "std"))]
-use alloc::{vec::Vec, string::String};
+use alloc::{string::String, vec::Vec};
 
 use crate::{Result, VefasCoreError};
 
@@ -177,9 +177,7 @@ pub struct TlsRecordParser {
 impl TlsRecordParser {
     /// Create a new TLS record parser
     pub fn new() -> Self {
-        Self {
-            buffer: Vec::new(),
-        }
+        Self { buffer: Vec::new() }
     }
 
     /// Parse TLS records from raw bytes
@@ -225,7 +223,10 @@ impl TlsRecordParser {
     }
 
     /// Extract handshake messages from TLS records
-    pub fn extract_handshake_messages(&self, records: &[TlsRecord]) -> Result<Vec<HandshakeMessage>> {
+    pub fn extract_handshake_messages(
+        &self,
+        records: &[TlsRecord],
+    ) -> Result<Vec<HandshakeMessage>> {
         // Concatenate all handshake record payloads to correctly reassemble fragmented messages
         let mut concatenated = Vec::new();
         for record in records {
@@ -249,11 +250,17 @@ impl TlsRecordParser {
 
             let message_end = offset + 4 + length as usize;
             if message_end > concatenated.len() {
-                return Err(VefasCoreError::TlsError("Incomplete handshake message across records".to_string()));
+                return Err(VefasCoreError::TlsError(
+                    "Incomplete handshake message across records".to_string(),
+                ));
             }
 
             let payload = concatenated[offset + 4..message_end].to_vec();
-            messages.push(HandshakeMessage { msg_type, length, payload });
+            messages.push(HandshakeMessage {
+                msg_type,
+                length,
+                payload,
+            });
             offset = message_end;
         }
 
@@ -271,7 +278,9 @@ impl TlsRecordParser {
         let extensions_end = offset + 2 + extensions_length as usize;
 
         if extensions_end > payload.len() {
-            return Err(VefasCoreError::TlsError("Invalid extensions length".to_string()));
+            return Err(VefasCoreError::TlsError(
+                "Invalid extensions length".to_string(),
+            ));
         }
 
         let mut extensions = Vec::new();
@@ -279,11 +288,14 @@ impl TlsRecordParser {
 
         while ext_offset + 4 <= extensions_end {
             let extension_type = u16::from_be_bytes([payload[ext_offset], payload[ext_offset + 1]]);
-            let extension_length = u16::from_be_bytes([payload[ext_offset + 2], payload[ext_offset + 3]]);
+            let extension_length =
+                u16::from_be_bytes([payload[ext_offset + 2], payload[ext_offset + 3]]);
 
             let data_end = ext_offset + 4 + extension_length as usize;
             if data_end > extensions_end {
-                return Err(VefasCoreError::TlsError("Invalid extension length".to_string()));
+                return Err(VefasCoreError::TlsError(
+                    "Invalid extension length".to_string(),
+                ));
             }
 
             let data = payload[ext_offset + 4..data_end].to_vec();

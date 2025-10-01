@@ -4,8 +4,8 @@
 //! to verify TLS sessions and generate zero-knowledge proofs.
 
 use vefas_risc0::VefasRisc0Prover;
-use vefas_types::VefasCanonicalBundle;
 use vefas_risc0_methods::VEFAS_RISC0_GUEST_ID as GUEST_ID;
+use vefas_types::VefasCanonicalBundle;
 
 fn main() {
     // Initialize logging
@@ -33,8 +33,14 @@ fn main() {
             println!("  Path: {}", proof.claim.path);
             println!("  Status Code: {}", proof.claim.status_code);
             println!("  Execution Cycles: {}", proof.execution_metadata.cycles);
-            println!("  Execution Time: {} ms", proof.execution_metadata.execution_time_ms);
-            println!("  Proof Time: {} ms", proof.execution_metadata.proof_time_ms);
+            println!(
+                "  Execution Time: {} ms",
+                proof.execution_metadata.execution_time_ms
+            );
+            println!(
+                "  Proof Time: {} ms",
+                proof.execution_metadata.proof_time_ms
+            );
 
             // Verify the generated proof
             println!("\nVerifying the generated proof...");
@@ -74,7 +80,7 @@ fn create_mock_bundle() -> VefasCanonicalBundle {
         vec![0x16, 0x03, 0x03, 0x00, 0x20], // Mock Certificate
         vec![0x16, 0x03, 0x03, 0x00, 0x10], // Mock CertificateVerify
         vec![0x16, 0x03, 0x03, 0x00, 0x10], // Mock ServerFinished
-        [1u8; 32], // Mock private key
+        [1u8; 32],                          // Mock private key
         vec![vec![0x30, 0x82, 0x01, 0x00]], // Mock certificate chain
         b"GET / HTTP/1.1\r\nHost: example.com\r\n\r\n".to_vec(),
         b"HTTP/1.1 200 OK\r\n\r\nHello World".to_vec(),
@@ -82,5 +88,6 @@ fn create_mock_bundle() -> VefasCanonicalBundle {
         1678886400,
         200,
         [42u8; 32],
-    ).expect("Failed to create mock bundle")
+    )
+    .expect("Failed to create mock bundle")
 }

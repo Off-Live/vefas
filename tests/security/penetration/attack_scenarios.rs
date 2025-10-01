@@ -4,13 +4,13 @@
 //! that simulate real-world attacks against the VEFAS system to identify
 //! security vulnerabilities and ensure robust defense mechanisms.
 
+use futures::future::join_all;
 use reqwest::{Client, StatusCode};
 use serde_json::{json, Value};
-use tokio::time::{sleep, Duration, timeout};
 use std::collections::HashMap;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use futures::future::join_all;
+use std::sync::Arc;
+use tokio::time::{sleep, timeout, Duration};
 
 /// Comprehensive penetration testing suite
 pub struct VefasPenetrationTester {
@@ -342,7 +342,8 @@ impl VefasPenetrationTester {
     }
 
     async fn test_jwt_manipulation(&self, jwt: &str) -> TestResult {
-        let response = self.client
+        let response = self
+            .client
             .get(&format!("{}/api/v1/health", self.gateway_url))
             .header("Authorization", format!("Bearer {}", jwt))
             .send()
@@ -361,7 +362,8 @@ impl VefasPenetrationTester {
     }
 
     async fn test_api_key_manipulation(&self, api_key: &str) -> TestResult {
-        let response = self.client
+        let response = self
+            .client
             .get(&format!("{}/api/v1/health", self.gateway_url))
             .header("Authorization", api_key)
             .send()
@@ -381,7 +383,8 @@ impl VefasPenetrationTester {
     }
 
     async fn test_session_manipulation(&self, session: &str) -> TestResult {
-        let response = self.client
+        let response = self
+            .client
             .get(&format!("{}/api/v1/health", self.gateway_url))
             .header("Cookie", format!("session={}", session))
             .send()
@@ -400,12 +403,10 @@ impl VefasPenetrationTester {
         for _ in 0..flood_size {
             let client = self.client.clone();
             let url = self.gateway_url.clone();
-            let handle = tokio::spawn(async move {
-                client
-                    .get(&format!("{}/api/v1/health", url))
-                    .send()
-                    .await
-            });
+            let handle =
+                tokio::spawn(
+                    async move { client.get(&format!("{}/api/v1/health", url)).send().await },
+                );
             handles.push(handle);
         }
 
@@ -418,7 +419,10 @@ impl VefasPenetrationTester {
             .count();
 
         if rate_limited_count > 0 {
-            TestResult::Protected(format!("Rate limiting active: {} requests limited", rate_limited_count))
+            TestResult::Protected(format!(
+                "Rate limiting active: {} requests limited",
+                rate_limited_count
+            ))
         } else {
             TestResult::Vulnerable("No rate limiting detected".to_string())
         }
@@ -433,7 +437,12 @@ impl VefasPenetrationTester {
             "proof_platform": "sp1"
         });
 
-        match timeout(Duration::from_secs(10), self.send_malicious_request(malicious_request)).await {
+        match timeout(
+            Duration::from_secs(10),
+            self.send_malicious_request(malicious_request),
+        )
+        .await
+        {
             Ok(Ok(response)) => {
                 if response.status().is_client_error() {
                     TestResult::Protected("Large payload rejected".to_string())
@@ -467,8 +476,15 @@ impl VefasPenetrationTester {
         join_all(handles).await;
 
         // Check if server is still responsive
-        match self.client.get(&format!("{}/api/v1/health", self.gateway_url)).send().await {
-            Ok(_) => TestResult::Protected("Server remained responsive during slow loris attack".to_string()),
+        match self
+            .client
+            .get(&format!("{}/api/v1/health", self.gateway_url))
+            .send()
+            .await
+        {
+            Ok(_) => TestResult::Protected(
+                "Server remained responsive during slow loris attack".to_string(),
+            ),
             Err(_) => TestResult::Vulnerable("Server became unresponsive".to_string()),
         }
     }
@@ -514,14 +530,25 @@ impl VefasPenetrationTester {
                 "proof_platform": "sp1"
             });
 
-            match timeout(Duration::from_secs(5), self.send_malicious_request(malicious_request)).await {
+            match timeout(
+                Duration::from_secs(5),
+                self.send_malicious_request(malicious_request),
+            )
+            .await
+            {
                 Ok(Ok(response)) => {
                     if response.status().is_client_error() {
-                        return TestResult::Protected("CPU exhaustion attempt rejected".to_string());
+                        return TestResult::Protected(
+                            "CPU exhaustion attempt rejected".to_string(),
+                        );
                     }
                 }
-                Ok(Err(_)) => return TestResult::Protected("CPU exhaustion request failed".to_string()),
-                Err(_) => return TestResult::Vulnerable("CPU exhaustion caused timeout".to_string()),
+                Ok(Err(_)) => {
+                    return TestResult::Protected("CPU exhaustion request failed".to_string())
+                }
+                Err(_) => {
+                    return TestResult::Vulnerable("CPU exhaustion caused timeout".to_string())
+                }
             }
         }
 
@@ -532,7 +559,8 @@ impl VefasPenetrationTester {
         // Test Content-Length vs Transfer-Encoding confusion
         let smuggling_payload = "POST /api/v1/requests HTTP/1.1\r\nHost: victim.com\r\nContent-Length: 13\r\nTransfer-Encoding: chunked\r\n\r\n0\r\n\r\nSMUGGLED";
 
-        let response = self.client
+        let response = self
+            .client
             .post(&format!("{}/api/v1/requests", self.gateway_url))
             .header("Content-Type", "application/json")
             .body(smuggling_payload)
@@ -575,7 +603,8 @@ impl VefasPenetrationTester {
 
     async fn test_protocol_downgrade(&self) -> TestResult {
         // Try to force HTTP/1.0 usage
-        let response = self.client
+        let response = self
+            .client
             .get(&format!("{}/api/v1/health", self.gateway_url))
             .version(reqwest::Version::HTTP_10)
             .send()
@@ -604,7 +633,8 @@ impl VefasPenetrationTester {
         ];
 
         for (header, value) in malicious_headers {
-            let response = self.client
+            let response = self
+                .client
                 .get(&format!("{}/api/v1/health", self.gateway_url))
                 .header(header, value)
                 .send()
@@ -612,7 +642,11 @@ impl VefasPenetrationTester {
 
             match response {
                 Ok(_) => continue, // Header manipulation had no immediate effect
-                Err(_) => return TestResult::Protected("Header manipulation caused request failure".to_string()),
+                Err(_) => {
+                    return TestResult::Protected(
+                        "Header manipulation caused request failure".to_string(),
+                    )
+                }
             }
         }
 
@@ -632,7 +666,8 @@ impl VefasPenetrationTester {
         let mut error_messages = vec![];
 
         for request in invalid_requests {
-            if let Ok(response) = self.client
+            if let Ok(response) = self
+                .client
                 .post(&format!("{}/api/v1/requests", self.gateway_url))
                 .json(&request)
                 .send()
@@ -646,14 +681,25 @@ impl VefasPenetrationTester {
 
         // Check for information disclosure in error messages
         let sensitive_patterns = vec![
-            "panic", "backtrace", "internal error", "/home/", "/Users/",
-            "password", "secret", "key", "token", "credential",
+            "panic",
+            "backtrace",
+            "internal error",
+            "/home/",
+            "/Users/",
+            "password",
+            "secret",
+            "key",
+            "token",
+            "credential",
         ];
 
         for message in &error_messages {
             for pattern in &sensitive_patterns {
                 if message.to_lowercase().contains(&pattern.to_lowercase()) {
-                    return TestResult::Vulnerable(format!("Error message contains sensitive information: {}", pattern));
+                    return TestResult::Vulnerable(format!(
+                        "Error message contains sensitive information: {}",
+                        pattern
+                    ));
                 }
             }
         }
@@ -692,7 +738,8 @@ impl VefasPenetrationTester {
         }
 
         let avg_valid: Duration = valid_times.iter().sum::<Duration>() / valid_times.len() as u32;
-        let avg_invalid: Duration = invalid_times.iter().sum::<Duration>() / invalid_times.len() as u32;
+        let avg_invalid: Duration =
+            invalid_times.iter().sum::<Duration>() / invalid_times.len() as u32;
 
         // Check if timing difference is significant (>2x difference could indicate timing attack vulnerability)
         let ratio = if avg_valid > avg_invalid {
@@ -702,7 +749,10 @@ impl VefasPenetrationTester {
         };
 
         if ratio > 2.0 {
-            TestResult::Vulnerable(format!("Significant timing difference detected: {:.2}x", ratio))
+            TestResult::Vulnerable(format!(
+                "Significant timing difference detected: {:.2}x",
+                ratio
+            ))
         } else {
             TestResult::Protected("No significant timing differences detected".to_string())
         }
@@ -728,7 +778,9 @@ impl VefasPenetrationTester {
                     if response.status().is_success() {
                         let text = response.text().await.unwrap_or_default();
                         if text.contains("root:") || text.contains("SAM") {
-                            return TestResult::Vulnerable("Directory traversal succeeded".to_string());
+                            return TestResult::Vulnerable(
+                                "Directory traversal succeeded".to_string(),
+                            );
                         }
                     }
                 }
@@ -741,23 +793,38 @@ impl VefasPenetrationTester {
 
     async fn test_metadata_leakage(&self) -> TestResult {
         // Check response headers for sensitive information
-        if let Ok(response) = self.client.get(&format!("{}/api/v1/health", self.gateway_url)).send().await {
+        if let Ok(response) = self
+            .client
+            .get(&format!("{}/api/v1/health", self.gateway_url))
+            .send()
+            .await
+        {
             let headers = response.headers();
 
             let sensitive_headers = vec![
-                "server", "x-powered-by", "x-runtime", "x-version",
-                "x-server-id", "x-request-id", "x-trace-id",
+                "server",
+                "x-powered-by",
+                "x-runtime",
+                "x-version",
+                "x-server-id",
+                "x-request-id",
+                "x-trace-id",
             ];
 
             for header_name in sensitive_headers {
                 if let Some(header_value) = headers.get(header_name) {
                     if let Ok(value_str) = header_value.to_str() {
                         // Check if header reveals sensitive information
-                        if value_str.to_lowercase().contains("rust") ||
-                           value_str.to_lowercase().contains("axum") ||
-                           value_str.to_lowercase().contains("tokio") ||
-                           value_str.contains("/") { // Version information
-                            return TestResult::Vulnerable(format!("Header {} reveals sensitive information: {}", header_name, value_str));
+                        if value_str.to_lowercase().contains("rust")
+                            || value_str.to_lowercase().contains("axum")
+                            || value_str.to_lowercase().contains("tokio")
+                            || value_str.contains("/")
+                        {
+                            // Version information
+                            return TestResult::Vulnerable(format!(
+                                "Header {} reveals sensitive information: {}",
+                                header_name, value_str
+                            ));
                         }
                     }
                 }
@@ -798,7 +865,8 @@ impl VefasPenetrationTester {
             "proof": malicious_proof
         });
 
-        match self.client
+        match self
+            .client
             .post(&format!("{}/api/v1/verify", self.gateway_url))
             .json(&verify_request)
             .send()
@@ -806,12 +874,15 @@ impl VefasPenetrationTester {
         {
             Ok(response) => {
                 if let Ok(json_response) = response.json::<Value>().await {
-                    if json_response.get("verification_result")
+                    if json_response
+                        .get("verification_result")
                         .and_then(|vr| vr.get("valid"))
                         .and_then(|v| v.as_bool())
                         .unwrap_or(false)
                     {
-                        TestResult::Vulnerable("Manipulated proof was accepted as valid".to_string())
+                        TestResult::Vulnerable(
+                            "Manipulated proof was accepted as valid".to_string(),
+                        )
                     } else {
                         TestResult::Protected("Manipulated proof was rejected".to_string())
                     }
@@ -826,7 +897,9 @@ impl VefasPenetrationTester {
     async fn test_bundle_tampering(&self) -> TestResult {
         // This test would require access to the actual bundle structure
         // For now, we'll test if the system properly validates bundle integrity
-        TestResult::Info("Bundle tampering test requires implementation-specific details".to_string())
+        TestResult::Info(
+            "Bundle tampering test requires implementation-specific details".to_string(),
+        )
     }
 
     async fn test_replay_attacks(&self) -> TestResult {
@@ -846,7 +919,9 @@ impl VefasPenetrationTester {
                 if let Ok(replay_response) = self.send_malicious_request(original_request).await {
                     if replay_response.status().is_success() {
                         // Both requests succeeded - check if they have different proof data
-                        TestResult::Info("Replay test completed - check proof uniqueness separately".to_string())
+                        TestResult::Info(
+                            "Replay test completed - check proof uniqueness separately".to_string(),
+                        )
                     } else {
                         TestResult::Protected("Replay request was rejected".to_string())
                     }
@@ -897,13 +972,19 @@ impl VefasPenetrationTester {
 
         // Check if all concurrent requests were handled properly
         if successful_requests.len() > 0 {
-            TestResult::Protected(format!("Race condition test: {} concurrent requests handled", successful_requests.len()))
+            TestResult::Protected(format!(
+                "Race condition test: {} concurrent requests handled",
+                successful_requests.len()
+            ))
         } else {
             TestResult::Info("No successful concurrent requests in race condition test".to_string())
         }
     }
 
-    async fn send_malicious_request(&self, request: Value) -> Result<reqwest::Response, reqwest::Error> {
+    async fn send_malicious_request(
+        &self,
+        request: Value,
+    ) -> Result<reqwest::Response, reqwest::Error> {
         self.client
             .post(&format!("{}/api/v1/requests", self.gateway_url))
             .json(&request)
@@ -939,7 +1020,8 @@ impl PenetrationTestResults {
         }
         self.total_tests += 1;
 
-        self.tests.entry(category.to_string())
+        self.tests
+            .entry(category.to_string())
             .or_insert_with(Vec::new)
             .push(result);
     }
@@ -1000,9 +1082,17 @@ mod penetration_tests {
         println!("{}", results.summary());
 
         // Assert that we found no critical vulnerabilities
-        assert_eq!(results.vulnerabilities_found, 0, "Found {} vulnerabilities during penetration testing", results.vulnerabilities_found);
+        assert_eq!(
+            results.vulnerabilities_found, 0,
+            "Found {} vulnerabilities during penetration testing",
+            results.vulnerabilities_found
+        );
 
         // Ensure we ran a reasonable number of tests
-        assert!(results.total_tests > 50, "Expected at least 50 penetration tests, ran {}", results.total_tests);
+        assert!(
+            results.total_tests > 50,
+            "Expected at least 50 penetration tests, ran {}",
+            results.total_tests
+        );
     }
 }

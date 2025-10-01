@@ -11,10 +11,10 @@
 //! - **Deterministic ordering**: Consistent secret serialization
 //! - **Security-conscious**: Clear secrets after use with zeroize
 
-use crate::error::{VefasCoreError, Result};
+use crate::error::{Result, VefasCoreError};
+use rustls::KeyLog;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use rustls::KeyLog;
 use zeroize::Zeroize;
 
 /// TLS 1.3 secret labels that we need to capture
@@ -104,13 +104,18 @@ impl VefasKeyLog {
     }
 
     /// Get all secrets for a specific client random
-    pub fn get_session_secrets(&self, client_random: &[u8; 32]) -> Result<HashMap<String, SecretEntry>> {
+    pub fn get_session_secrets(
+        &self,
+        client_random: &[u8; 32],
+    ) -> Result<HashMap<String, SecretEntry>> {
         let client_random_hex = hex::encode(client_random);
-        let sessions = self.sessions
+        let sessions = self
+            .sessions
             .lock()
             .map_err(|e| VefasCoreError::internal(&format!("Failed to lock sessions: {}", e)))?;
 
-        Ok(sessions.get(&client_random_hex)
+        Ok(sessions
+            .get(&client_random_hex)
             .cloned()
             .unwrap_or_default())
     }
@@ -136,7 +141,8 @@ impl VefasKeyLog {
 
     /// Get all captured sessions
     pub fn get_all_sessions(&self) -> Result<Vec<String>> {
-        let sessions = self.sessions
+        let sessions = self
+            .sessions
             .lock()
             .map_err(|e| VefasCoreError::internal(&format!("Failed to lock sessions: {}", e)))?;
 
@@ -145,7 +151,8 @@ impl VefasKeyLog {
 
     /// Clear all captured secrets (for security)
     pub fn clear_all_secrets(&self) -> Result<()> {
-        let mut sessions = self.sessions
+        let mut sessions = self
+            .sessions
             .lock()
             .map_err(|e| VefasCoreError::internal(&format!("Failed to lock sessions: {}", e)))?;
 
@@ -161,20 +168,20 @@ impl VefasKeyLog {
 
     /// Get the total number of captured secrets across all sessions
     pub fn total_secret_count(&self) -> Result<usize> {
-        let sessions = self.sessions
+        let sessions = self
+            .sessions
             .lock()
             .map_err(|e| VefasCoreError::internal(&format!("Failed to lock sessions: {}", e)))?;
 
-        let count = sessions.values()
-            .map(|session| session.len())
-            .sum();
+        let count = sessions.values().map(|session| session.len()).sum();
 
         Ok(count)
     }
 
     /// Export secrets in SSLKEYLOGFILE format for debugging
     pub fn export_sslkeylogfile_format(&self) -> Result<String> {
-        let sessions = self.sessions
+        let sessions = self
+            .sessions
             .lock()
             .map_err(|e| VefasCoreError::internal(&format!("Failed to lock sessions: {}", e)))?;
 
@@ -192,7 +199,11 @@ impl VefasKeyLog {
         // Deterministic ordering: sort by label, then client_random
         entries.sort_by(|a, b| {
             let c = a.0.cmp(&b.0);
-            if c == core::cmp::Ordering::Equal { a.1.cmp(&b.1) } else { c }
+            if c == core::cmp::Ordering::Equal {
+                a.1.cmp(&b.1)
+            } else {
+                c
+            }
         });
 
         let mut output = String::new();
@@ -226,18 +237,18 @@ impl KeyLog for VefasKeyLog {
             Ok(arr) => arr,
             Err(_) => {
                 if self.enable_debug_log {
-                    eprintln!("VefasKeyLog: Invalid client random length: {}", client_random.len());
+                    eprintln!(
+                        "VefasKeyLog: Invalid client random length: {}",
+                        client_random.len()
+                    );
                 }
                 return;
             }
         };
 
         let client_random_hex = hex::encode(client_random_array);
-        let secret_entry = SecretEntry::new(
-            label.to_string(),
-            client_random_array,
-            secret.to_vec(),
-        );
+        let secret_entry =
+            SecretEntry::new(label.to_string(), client_random_array, secret.to_vec());
 
         // Log to our internal storage
         if let Ok(mut sessions) = self.sessions.lock() {
@@ -332,7 +343,9 @@ mod tests {
 
         assert_eq!(keylog.total_secret_count().unwrap(), 1);
 
-        let retrieved_secret = keylog.get_secret(&client_random, "CLIENT_TRAFFIC_SECRET_0").unwrap();
+        let retrieved_secret = keylog
+            .get_secret(&client_random, "CLIENT_TRAFFIC_SECRET_0")
+            .unwrap();
         assert!(retrieved_secret.is_some());
 
         let secret_entry = retrieved_secret.unwrap();
@@ -346,9 +359,21 @@ mod tests {
         let client_random = create_test_client_random();
 
         // Log multiple secrets for the same session
-        keylog.log("CLIENT_HANDSHAKE_TRAFFIC_SECRET", &client_random, &create_test_secret("handshake"));
-        keylog.log("CLIENT_TRAFFIC_SECRET_0", &client_random, &create_test_secret("traffic"));
-        keylog.log("EXPORTER_SECRET", &client_random, &create_test_secret("exporter"));
+        keylog.log(
+            "CLIENT_HANDSHAKE_TRAFFIC_SECRET",
+            &client_random,
+            &create_test_secret("handshake"),
+        );
+        keylog.log(
+            "CLIENT_TRAFFIC_SECRET_0",
+            &client_random,
+            &create_test_secret("traffic"),
+        );
+        keylog.log(
+            "EXPORTER_SECRET",
+            &client_random,
+            &create_test_secret("exporter"),
+        );
 
         assert_eq!(keylog.total_secret_count().unwrap(), 3);
 
@@ -366,8 +391,16 @@ mod tests {
         let mut client_random2 = create_test_client_random();
         client_random2[0] = 0xFF; // Make it different
 
-        keylog.log("CLIENT_TRAFFIC_SECRET_0", &client_random1, &create_test_secret("secret1"));
-        keylog.log("CLIENT_TRAFFIC_SECRET_0", &client_random2, &create_test_secret("secret2"));
+        keylog.log(
+            "CLIENT_TRAFFIC_SECRET_0",
+            &client_random1,
+            &create_test_secret("secret1"),
+        );
+        keylog.log(
+            "CLIENT_TRAFFIC_SECRET_0",
+            &client_random2,
+            &create_test_secret("secret2"),
+        );
 
         assert_eq!(keylog.total_secret_count().unwrap(), 2);
 
@@ -398,8 +431,16 @@ mod tests {
         assert!(!keylog.has_all_required_secrets(&client_random).unwrap());
 
         // Add some but not all required secrets
-        keylog.log("CLIENT_HANDSHAKE_TRAFFIC_SECRET", &client_random, &create_test_secret("handshake"));
-        keylog.log("CLIENT_TRAFFIC_SECRET_0", &client_random, &create_test_secret("traffic"));
+        keylog.log(
+            "CLIENT_HANDSHAKE_TRAFFIC_SECRET",
+            &client_random,
+            &create_test_secret("handshake"),
+        );
+        keylog.log(
+            "CLIENT_TRAFFIC_SECRET_0",
+            &client_random,
+            &create_test_secret("traffic"),
+        );
         assert!(!keylog.has_all_required_secrets(&client_random).unwrap());
 
         // Add all required secrets
@@ -414,7 +455,11 @@ mod tests {
         let keylog = VefasKeyLog::new();
         let client_random = create_test_client_random();
 
-        keylog.log("CLIENT_TRAFFIC_SECRET_0", &client_random, &create_test_secret("secret"));
+        keylog.log(
+            "CLIENT_TRAFFIC_SECRET_0",
+            &client_random,
+            &create_test_secret("secret"),
+        );
         assert_eq!(keylog.total_secret_count().unwrap(), 1);
 
         keylog.clear_all_secrets().unwrap();
@@ -427,8 +472,16 @@ mod tests {
         let keylog = VefasKeyLog::new();
         let client_random = create_test_client_random();
 
-        keylog.log("CLIENT_TRAFFIC_SECRET_0", &client_random, &create_test_secret("traffic"));
-        keylog.log("SERVER_TRAFFIC_SECRET_0", &client_random, &create_test_secret("server"));
+        keylog.log(
+            "CLIENT_TRAFFIC_SECRET_0",
+            &client_random,
+            &create_test_secret("traffic"),
+        );
+        keylog.log(
+            "SERVER_TRAFFIC_SECRET_0",
+            &client_random,
+            &create_test_secret("server"),
+        );
 
         let export = keylog.export_sslkeylogfile_format().unwrap();
 
@@ -444,7 +497,11 @@ mod tests {
         let invalid_random = [0u8; 16]; // Too short
 
         // This should not panic but should be handled gracefully
-        keylog.log("CLIENT_TRAFFIC_SECRET_0", &invalid_random, &create_test_secret("secret"));
+        keylog.log(
+            "CLIENT_TRAFFIC_SECRET_0",
+            &invalid_random,
+            &create_test_secret("secret"),
+        );
 
         // The secret should not be logged due to invalid client random
         assert_eq!(keylog.total_secret_count().unwrap(), 0);
@@ -468,7 +525,7 @@ mod tests {
                 keylog_clone.log(
                     "CLIENT_TRAFFIC_SECRET_0",
                     &client_random,
-                    &create_test_secret(&format!("secret_{}", i))
+                    &create_test_secret(&format!("secret_{}", i)),
                 );
             });
             handles.push(handle);

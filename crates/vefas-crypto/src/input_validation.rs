@@ -5,10 +5,7 @@
 //! bounds checking to prevent buffer overflows and ensure deterministic
 //! behavior in zero-knowledge contexts.
 
-
-
-
-use vefas_types::{VefasResult, VefasError};
+use vefas_types::{VefasError, VefasResult};
 
 /// Safe parser for bounds-checked binary data parsing
 ///
@@ -146,7 +143,10 @@ impl<'a> SafeParser<'a> {
     /// Peek at the next 16-bit value without advancing the parser
     pub fn peek_u16(&self) -> Option<u16> {
         if self.offset + 2 <= self.data.len() {
-            Some(u16::from_be_bytes([self.data[self.offset], self.data[self.offset + 1]]))
+            Some(u16::from_be_bytes([
+                self.data[self.offset],
+                self.data[self.offset + 1],
+            ]))
         } else {
             None
         }
@@ -218,7 +218,8 @@ pub fn parse_der_length(data: &[u8]) -> Option<(usize, usize)> {
         }
 
         // Sanity check: don't allow unreasonably large lengths
-        if length > 0x1000000 { // 16MB limit
+        if length > 0x1000000 {
+            // 16MB limit
             return None;
         }
 
@@ -245,11 +246,17 @@ pub fn parse_24bit_length(data: &[u8]) -> Option<usize> {
 /// Validate TLS record header structure
 pub fn validate_tls_record_header(data: &[u8]) -> VefasResult<(u8, u16, usize)> {
     if data.len() < 5 {
-        return Err(VefasError::invalid_input("tls_record", "Record too short (minimum 5 bytes)"));
+        return Err(VefasError::invalid_input(
+            "tls_record",
+            "Record too short (minimum 5 bytes)",
+        ));
     }
 
     if data.len() > 16389 {
-        return Err(VefasError::invalid_input("tls_record", "Record too long (maximum 16389 bytes)"));
+        return Err(VefasError::invalid_input(
+            "tls_record",
+            "Record too long (maximum 16389 bytes)",
+        ));
     }
 
     let content_type = data[0];
@@ -258,27 +265,46 @@ pub fn validate_tls_record_header(data: &[u8]) -> VefasResult<(u8, u16, usize)> 
 
     // Validate content type
     match content_type {
-        20 | 21 | 22 | 23 => {}, // change_cipher_spec, alert, handshake, application_data
-        _ => return Err(VefasError::invalid_input("tls_record", "Invalid content type")),
+        20 | 21 | 22 | 23 => {} // change_cipher_spec, alert, handshake, application_data
+        _ => {
+            return Err(VefasError::invalid_input(
+                "tls_record",
+                "Invalid content type",
+            ))
+        }
     }
 
     // Validate TLS version
     match version {
-        0x0303 => {}, // TLS 1.2 (used in TLS 1.3 records for compatibility)
-        _ => return Err(VefasError::invalid_input("tls_record", "Unsupported TLS version")),
+        0x0303 => {} // TLS 1.2 (used in TLS 1.3 records for compatibility)
+        _ => {
+            return Err(VefasError::invalid_input(
+                "tls_record",
+                "Unsupported TLS version",
+            ))
+        }
     }
 
     // Validate declared length
     if declared_len == 0 {
-        return Err(VefasError::invalid_input("tls_record", "Zero-length record"));
+        return Err(VefasError::invalid_input(
+            "tls_record",
+            "Zero-length record",
+        ));
     }
 
     if declared_len > 16384 {
-        return Err(VefasError::invalid_input("tls_record", "Record payload too large"));
+        return Err(VefasError::invalid_input(
+            "tls_record",
+            "Record payload too large",
+        ));
     }
 
     if 5 + declared_len != data.len() {
-        return Err(VefasError::invalid_input("tls_record", "Record length mismatch"));
+        return Err(VefasError::invalid_input(
+            "tls_record",
+            "Record length mismatch",
+        ));
     }
 
     Ok((content_type, version, declared_len))
@@ -287,7 +313,10 @@ pub fn validate_tls_record_header(data: &[u8]) -> VefasResult<(u8, u16, usize)> 
 /// Validate handshake message header
 pub fn validate_handshake_header(data: &[u8]) -> VefasResult<(u8, usize)> {
     if data.len() < 4 {
-        return Err(VefasError::invalid_input("handshake", "Handshake message too short"));
+        return Err(VefasError::invalid_input(
+            "handshake",
+            "Handshake message too short",
+        ));
     }
 
     let msg_type = data[0];
@@ -296,18 +325,29 @@ pub fn validate_handshake_header(data: &[u8]) -> VefasResult<(u8, usize)> {
 
     // Validate handshake message type
     match msg_type {
-        0x01 | 0x02 | 0x0b | 0x0f | 0x14 => {}, // Valid types: ClientHello, ServerHello, Certificate, CertificateVerify, Finished
-        _ => return Err(VefasError::invalid_input("handshake", "Invalid handshake message type")),
+        0x01 | 0x02 | 0x0b | 0x0f | 0x14 => {} // Valid types: ClientHello, ServerHello, Certificate, CertificateVerify, Finished
+        _ => {
+            return Err(VefasError::invalid_input(
+                "handshake",
+                "Invalid handshake message type",
+            ))
+        }
     }
 
     // Validate declared length matches available data
     if 4 + declared_len > data.len() {
-        return Err(VefasError::invalid_input("handshake", "Handshake message length exceeds available data"));
+        return Err(VefasError::invalid_input(
+            "handshake",
+            "Handshake message length exceeds available data",
+        ));
     }
 
     // Validate length is reasonable (prevent DoS)
     if declared_len > 32768 {
-        return Err(VefasError::invalid_input("handshake", "Handshake message too large"));
+        return Err(VefasError::invalid_input(
+            "handshake",
+            "Handshake message too large",
+        ));
     }
 
     Ok((msg_type, declared_len))
@@ -327,7 +367,7 @@ pub fn memmem(haystack: &[u8], needle: &[u8]) -> bool {
     let rest = &needle[1..];
 
     for i in 0..=last {
-        if haystack[i] == first && haystack[i+1..i+1+rest.len()] == *rest {
+        if haystack[i] == first && haystack[i + 1..i + 1 + rest.len()] == *rest {
             return true;
         }
     }

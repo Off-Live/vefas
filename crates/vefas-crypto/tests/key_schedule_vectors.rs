@@ -1,16 +1,29 @@
-use vefas_crypto::{verify_session_keys, derive_aead_nonce, VefasCrypto};
-use sha2::Digest; // bring Digest trait in scope for Sha256::digest
-use vefas_types::tls::CipherSuite;
-use serde::Deserialize;
 use hex::FromHex;
+use serde::Deserialize;
+use sha2::Digest; // bring Digest trait in scope for Sha256::digest
 use std::path::Path;
+use vefas_crypto::{derive_aead_nonce, verify_session_keys, VefasCrypto};
+use vefas_types::tls::CipherSuite;
 
 struct NativeMock;
 
 impl vefas_crypto::traits::Hash for NativeMock {
-    fn sha256(&self, input: &[u8]) -> [u8; 32] { sha2::Sha256::digest(input).into() }
-    fn sha384(&self, input: &[u8]) -> [u8; 48] { use sha2::{Sha384, Digest}; let mut out=[0u8;48]; out.copy_from_slice(&Sha384::digest(input)); out }
-    fn hmac_sha256(&self, key: &[u8], data: &[u8]) -> [u8; 32] { use hmac::{Hmac, Mac}; use sha2::Sha256; let mut mac=Hmac::<Sha256>::new_from_slice(key).unwrap(); mac.update(data); mac.finalize().into_bytes().into() }
+    fn sha256(&self, input: &[u8]) -> [u8; 32] {
+        sha2::Sha256::digest(input).into()
+    }
+    fn sha384(&self, input: &[u8]) -> [u8; 48] {
+        use sha2::{Digest, Sha384};
+        let mut out = [0u8; 48];
+        out.copy_from_slice(&Sha384::digest(input));
+        out
+    }
+    fn hmac_sha256(&self, key: &[u8], data: &[u8]) -> [u8; 32] {
+        use hmac::{Hmac, Mac};
+        use sha2::Sha256;
+        let mut mac = Hmac::<Sha256>::new_from_slice(key).unwrap();
+        mac.update(data);
+        mac.finalize().into_bytes().into()
+    }
 }
 
 impl vefas_crypto::traits::Kdf for NativeMock {
@@ -24,7 +37,12 @@ impl vefas_crypto::traits::Kdf for NativeMock {
         out.copy_from_slice(&tag);
         out
     }
-    fn hkdf_expand(&self, prk: &[u8; 32], info: &[u8], length: usize) -> vefas_types::VefasResult<Vec<u8>> {
+    fn hkdf_expand(
+        &self,
+        prk: &[u8; 32],
+        info: &[u8],
+        length: usize,
+    ) -> vefas_types::VefasResult<Vec<u8>> {
         use hkdf::Hkdf;
         use sha2::Sha256;
         let hk = Hkdf::<Sha256>::from_prk(prk).unwrap();
@@ -35,36 +53,128 @@ impl vefas_crypto::traits::Kdf for NativeMock {
 }
 
 impl vefas_crypto::traits::Aead for NativeMock {
-    fn aes_128_gcm_encrypt(&self, _k:&[u8;16], _n:&[u8;12], _a:&[u8], p:&[u8]) -> vefas_types::VefasResult<Vec<u8>> { Ok(vec![0u8; p.len()+16]) }
-    fn aes_128_gcm_decrypt(&self, _k:&[u8;16], _n:&[u8;12], _a:&[u8], c:&[u8]) -> vefas_types::VefasResult<Vec<u8>> { Ok(vec![0u8; c.len().saturating_sub(16)]) }
-    fn aes_256_gcm_encrypt(&self, _:&[u8;32], _:&[u8;12], _:&[u8], p:&[u8]) -> vefas_types::VefasResult<Vec<u8>> { Ok(vec![0u8; p.len()+16]) }
-    fn aes_256_gcm_decrypt(&self, _:&[u8;32], _:&[u8;12], _:&[u8], c:&[u8]) -> vefas_types::VefasResult<Vec<u8>> { Ok(vec![0u8; c.len().saturating_sub(16)]) }
-    fn chacha20_poly1305_encrypt(&self, _:&[u8;32], _:&[u8;12], _:&[u8], p:&[u8]) -> vefas_types::VefasResult<Vec<u8>> { Ok(vec![0u8; p.len()+16]) }
-    fn chacha20_poly1305_decrypt(&self, _:&[u8;32], _:&[u8;12], _:&[u8], c:&[u8]) -> vefas_types::VefasResult<Vec<u8>> { Ok(vec![0u8; c.len().saturating_sub(16)]) }
+    fn aes_128_gcm_encrypt(
+        &self,
+        _k: &[u8; 16],
+        _n: &[u8; 12],
+        _a: &[u8],
+        p: &[u8],
+    ) -> vefas_types::VefasResult<Vec<u8>> {
+        Ok(vec![0u8; p.len() + 16])
+    }
+    fn aes_128_gcm_decrypt(
+        &self,
+        _k: &[u8; 16],
+        _n: &[u8; 12],
+        _a: &[u8],
+        c: &[u8],
+    ) -> vefas_types::VefasResult<Vec<u8>> {
+        Ok(vec![0u8; c.len().saturating_sub(16)])
+    }
+    fn aes_256_gcm_encrypt(
+        &self,
+        _: &[u8; 32],
+        _: &[u8; 12],
+        _: &[u8],
+        p: &[u8],
+    ) -> vefas_types::VefasResult<Vec<u8>> {
+        Ok(vec![0u8; p.len() + 16])
+    }
+    fn aes_256_gcm_decrypt(
+        &self,
+        _: &[u8; 32],
+        _: &[u8; 12],
+        _: &[u8],
+        c: &[u8],
+    ) -> vefas_types::VefasResult<Vec<u8>> {
+        Ok(vec![0u8; c.len().saturating_sub(16)])
+    }
+    fn chacha20_poly1305_encrypt(
+        &self,
+        _: &[u8; 32],
+        _: &[u8; 12],
+        _: &[u8],
+        p: &[u8],
+    ) -> vefas_types::VefasResult<Vec<u8>> {
+        Ok(vec![0u8; p.len() + 16])
+    }
+    fn chacha20_poly1305_decrypt(
+        &self,
+        _: &[u8; 32],
+        _: &[u8; 12],
+        _: &[u8],
+        c: &[u8],
+    ) -> vefas_types::VefasResult<Vec<u8>> {
+        Ok(vec![0u8; c.len().saturating_sub(16)])
+    }
 }
 
 impl vefas_crypto::traits::KeyExchange for NativeMock {
-    fn x25519_generate_keypair(&self) -> ([u8; 32],[u8;32]) { ([0u8;32],[0u8;32]) }
-    fn x25519_compute_shared_secret(&self,_:&[u8;32],_:&[u8;32])-> vefas_types::VefasResult<[u8;32]>{Ok([0u8;32])}
-    fn p256_generate_keypair(&self)-> vefas_types::VefasResult<([u8;32],[u8;65])>{Ok(([0u8;32],[0u8;65]))}
-    fn p256_compute_shared_secret(&self,_:&[u8;32],_:&[u8;65])-> vefas_types::VefasResult<[u8;32]>{Ok([0u8;32])}
+    fn x25519_generate_keypair(&self) -> ([u8; 32], [u8; 32]) {
+        ([0u8; 32], [0u8; 32])
+    }
+    fn x25519_compute_shared_secret(
+        &self,
+        _: &[u8; 32],
+        _: &[u8; 32],
+    ) -> vefas_types::VefasResult<[u8; 32]> {
+        Ok([0u8; 32])
+    }
+    fn p256_generate_keypair(&self) -> vefas_types::VefasResult<([u8; 32], [u8; 65])> {
+        Ok(([0u8; 32], [0u8; 65]))
+    }
+    fn p256_compute_shared_secret(
+        &self,
+        _: &[u8; 32],
+        _: &[u8; 65],
+    ) -> vefas_types::VefasResult<[u8; 32]> {
+        Ok([0u8; 32])
+    }
 }
 
 impl vefas_crypto::traits::Signature for NativeMock {
-    fn p256_generate_keypair(&self)-> vefas_types::VefasResult<([u8;32],[u8;65])>{Ok(([0u8;32],[0u8;65]))}
-    fn p256_sign(&self,_:&[u8;32],_:&[u8])-> vefas_types::VefasResult<Vec<u8>>{Ok(vec![0u8;64])}
-    fn p256_verify(&self,_:&[u8;65],_:&[u8],_:&[u8])-> bool {true}
-    fn secp256k1_generate_keypair(&self)-> vefas_types::VefasResult<([u8;32],[u8;65])>{Ok(([0u8;32],[0u8;65]))}
-    fn secp256k1_sign(&self,_:&[u8;32],_:&[u8])-> vefas_types::VefasResult<Vec<u8>>{Ok(vec![0u8;64])}
-    fn secp256k1_verify(&self,_:&[u8;65],_:&[u8],_:&[u8])-> bool {true}
-    fn ed25519_generate_keypair(&self)-> ([u8;32],[u8;32]){([0u8;32],[0u8;32])}
-    fn ed25519_sign(&self,_:&[u8;32],_:&[u8])-> [u8;64]{[0u8;64]}
-    fn ed25519_verify(&self,_:&[u8;32],_:&[u8],_:&[u8;64])-> bool {true}
-    fn rsa_2048_generate_keypair(&self)-> vefas_types::VefasResult<(Vec<u8>,Vec<u8>)>{Ok((vec![],vec![]))}
-    fn rsa_pkcs1_sha256_sign(&self,_:&[u8],_:&[u8])-> vefas_types::VefasResult<Vec<u8>>{Ok(vec![])}
-    fn rsa_pkcs1_sha256_verify(&self,_:&[u8],_:&[u8],_:&[u8])-> bool {true}
-    fn rsa_pss_sha256_sign(&self,_:&[u8],_:&[u8])-> vefas_types::VefasResult<Vec<u8>>{Ok(vec![])}
-    fn rsa_pss_sha256_verify(&self,_:&[u8],_:&[u8],_:&[u8])-> bool {true}
+    fn p256_generate_keypair(&self) -> vefas_types::VefasResult<([u8; 32], [u8; 65])> {
+        Ok(([0u8; 32], [0u8; 65]))
+    }
+    fn p256_sign(&self, _: &[u8; 32], _: &[u8]) -> vefas_types::VefasResult<Vec<u8>> {
+        Ok(vec![0u8; 64])
+    }
+    fn p256_verify(&self, _: &[u8; 65], _: &[u8], _: &[u8]) -> bool {
+        true
+    }
+    fn secp256k1_generate_keypair(&self) -> vefas_types::VefasResult<([u8; 32], [u8; 65])> {
+        Ok(([0u8; 32], [0u8; 65]))
+    }
+    fn secp256k1_sign(&self, _: &[u8; 32], _: &[u8]) -> vefas_types::VefasResult<Vec<u8>> {
+        Ok(vec![0u8; 64])
+    }
+    fn secp256k1_verify(&self, _: &[u8; 65], _: &[u8], _: &[u8]) -> bool {
+        true
+    }
+    fn ed25519_generate_keypair(&self) -> ([u8; 32], [u8; 32]) {
+        ([0u8; 32], [0u8; 32])
+    }
+    fn ed25519_sign(&self, _: &[u8; 32], _: &[u8]) -> [u8; 64] {
+        [0u8; 64]
+    }
+    fn ed25519_verify(&self, _: &[u8; 32], _: &[u8], _: &[u8; 64]) -> bool {
+        true
+    }
+    fn rsa_2048_generate_keypair(&self) -> vefas_types::VefasResult<(Vec<u8>, Vec<u8>)> {
+        Ok((vec![], vec![]))
+    }
+    fn rsa_pkcs1_sha256_sign(&self, _: &[u8], _: &[u8]) -> vefas_types::VefasResult<Vec<u8>> {
+        Ok(vec![])
+    }
+    fn rsa_pkcs1_sha256_verify(&self, _: &[u8], _: &[u8], _: &[u8]) -> bool {
+        true
+    }
+    fn rsa_pss_sha256_sign(&self, _: &[u8], _: &[u8]) -> vefas_types::VefasResult<Vec<u8>> {
+        Ok(vec![])
+    }
+    fn rsa_pss_sha256_verify(&self, _: &[u8], _: &[u8], _: &[u8]) -> bool {
+        true
+    }
 }
 
 impl vefas_crypto::traits::PrecompileDetection for NativeMock {}
@@ -76,7 +186,13 @@ fn derives_keys_and_ivs_for_tls13_aes128_gcm_sha256() {
     let provider = NativeMock;
     let shared_secret = [1u8; 32];
     let transcript = b"handshake";
-    let keys = verify_session_keys(&provider, transcript, &shared_secret, CipherSuite::Aes128GcmSha256).expect("keys");
+    let keys = verify_session_keys(
+        &provider,
+        transcript,
+        &shared_secret,
+        CipherSuite::Aes128GcmSha256,
+    )
+    .expect("keys");
 
     assert_eq!(keys.client_application_key.len(), 16);
     assert_eq!(keys.server_application_key.len(), 16);
@@ -97,7 +213,13 @@ fn derives_keys_and_ivs_for_tls13_aes256_gcm_sha384_lengths() {
     let provider = NativeMock;
     let shared_secret = [2u8; 48];
     let transcript = b"handshake-sha384";
-    let keys = verify_session_keys(&provider, transcript, &shared_secret, CipherSuite::Aes256GcmSha384).expect("keys");
+    let keys = verify_session_keys(
+        &provider,
+        transcript,
+        &shared_secret,
+        CipherSuite::Aes256GcmSha384,
+    )
+    .expect("keys");
 
     // AES-256 key lengths
     assert_eq!(keys.client_application_key.len(), 32);
@@ -154,8 +276,13 @@ fn rfc8448_vector_validation_if_available() {
             let provider = NativeMock;
             let shared_secret = <Vec<u8>>::from_hex(&vec.shared_secret).expect("hex");
             let transcript_hash = <Vec<u8>>::from_hex(&vec.transcript_hash).expect("hex");
-            let suite = match transcript_hash.len() { 32 => CipherSuite::Aes128GcmSha256, 48 => CipherSuite::Aes256GcmSha384, n => panic!("unexpected transcript hash length {} in {:?}", n, path) };
-            let keys = verify_session_keys(&provider, &transcript_hash, &shared_secret, suite).expect("keys");
+            let suite = match transcript_hash.len() {
+                32 => CipherSuite::Aes128GcmSha256,
+                48 => CipherSuite::Aes256GcmSha384,
+                n => panic!("unexpected transcript hash length {} in {:?}", n, path),
+            };
+            let keys = verify_session_keys(&provider, &transcript_hash, &shared_secret, suite)
+                .expect("keys");
 
             let cas = <Vec<u8>>::from_hex(&vec.client_application_secret).unwrap();
             let sas = <Vec<u8>>::from_hex(&vec.server_application_secret).unwrap();
@@ -208,8 +335,13 @@ fn rfc8448_vector_validation_if_available() {
             let provider = NativeMock;
             let shared_secret = <Vec<u8>>::from_hex(&vec.shared_secret).expect("hex");
             let transcript_hash = <Vec<u8>>::from_hex(&vec.transcript_hash).expect("hex");
-            let suite = match transcript_hash.len() { 32 => CipherSuite::Aes128GcmSha256, 48 => CipherSuite::Aes256GcmSha384, n => panic!("unexpected transcript hash length {} in {:?}", n, p) };
-            let keys = verify_session_keys(&provider, &transcript_hash, &shared_secret, suite).expect("keys");
+            let suite = match transcript_hash.len() {
+                32 => CipherSuite::Aes128GcmSha256,
+                48 => CipherSuite::Aes256GcmSha384,
+                n => panic!("unexpected transcript hash length {} in {:?}", n, p),
+            };
+            let keys = verify_session_keys(&provider, &transcript_hash, &shared_secret, suite)
+                .expect("keys");
 
             let cas = <Vec<u8>>::from_hex(&vec.client_application_secret).unwrap();
             let sas = <Vec<u8>>::from_hex(&vec.server_application_secret).unwrap();
@@ -245,8 +377,16 @@ fn rfc8448_vector_validation_if_available() {
                 _ => {}
             }
 
-            assert_eq!(keys.client_application_secret, cas, "client app secret {:?}", p);
-            assert_eq!(keys.server_application_secret, sas, "server app secret {:?}", p);
+            assert_eq!(
+                keys.client_application_secret, cas,
+                "client app secret {:?}",
+                p
+            );
+            assert_eq!(
+                keys.server_application_secret, sas,
+                "server app secret {:?}",
+                p
+            );
             assert_eq!(keys.client_application_key, cak, "client key {:?}", p);
             assert_eq!(keys.server_application_key, sak, "server key {:?}", p);
             assert_eq!(keys.client_application_iv, cai, "client iv {:?}", p);
@@ -256,5 +396,3 @@ fn rfc8448_vector_validation_if_available() {
         });
     }
 }
-
-

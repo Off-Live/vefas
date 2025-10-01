@@ -7,7 +7,9 @@ fn should_skip() -> bool {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn get_request_tls13_smoke_test() {
-    if should_skip() { return; }
+    if should_skip() {
+        return;
+    }
 
     let client = VefasClient::new().expect("client");
     let bundle = client
@@ -26,5 +28,3 @@ async fn get_request_tls13_smoke_test() {
 }
 
 // Omit POST determinism test in production: many servers include dynamic headers.
-
-

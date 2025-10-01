@@ -3,8 +3,8 @@
 //! This module provides production-grade implementations of hash functions
 //! including SHA-256, SHA-384, and HMAC-SHA256 using the RustCrypto `sha2` and `hmac` crates.
 
-use sha2::{Sha256, Sha384, Digest};
 use hmac::{Hmac, Mac};
+use sha2::{Digest, Sha256, Sha384};
 
 type HmacSha256 = Hmac<Sha256>;
 
@@ -67,8 +67,7 @@ pub fn sha384(input: &[u8]) -> [u8; 48] {
 /// assert_eq!(hmac.len(), 32);
 /// ```
 pub fn hmac_sha256(key: &[u8], data: &[u8]) -> [u8; 32] {
-    let mut mac = HmacSha256::new_from_slice(key)
-        .expect("HMAC can take keys of any size");
+    let mut mac = HmacSha256::new_from_slice(key).expect("HMAC can take keys of any size");
     mac.update(data);
     mac.finalize().into_bytes().into()
 }

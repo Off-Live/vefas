@@ -1,5 +1,5 @@
-use vefas_core::VefasKeyLog;
 use rustls::KeyLog;
+use vefas_core::VefasKeyLog;
 
 #[test]
 fn will_log_only_tls13_labels() {
@@ -20,5 +20,3 @@ fn will_log_only_tls13_labels() {
     assert!(!kl.will_log("SERVER_EARLY_TRAFFIC_SECRET"));
     assert!(!kl.will_log("SOME_OTHER_LABEL"));
 }
-
-

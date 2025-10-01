@@ -628,8 +628,8 @@ impl Signature for RISC0CryptoProvider {
                 "invalid RSA private key DER",
             ))?;
 
-        // Create signing key with SHA-256
-        let signing_key = RsaSigningKey::<Sha256>::new_unprefixed(private_key);
+        // Create signing key with SHA-256 (standard PKCS#1 v1.5 with DigestInfo)
+        let signing_key = RsaSigningKey::<Sha256>::new(private_key);
 
         // Generate deterministic RNG for signing
         let seed = self.get_execution_context_seed();
@@ -651,10 +651,10 @@ impl Signature for RISC0CryptoProvider {
             Err(_) => return false,
         };
 
-        // Create verifying key with SHA-256
-        let verifying_key = RsaVerifyingKey::<Sha256>::new_unprefixed(public_key);
+        // Create verifying key with SHA-256 (standard PKCS#1 v1.5 with DigestInfo)
+        let verifying_key = RsaVerifyingKey::<Sha256>::new(public_key);
 
-        // Parse signature
+        // Parse signature and verify
         match RsaSignature::try_from(signature) {
             Ok(sig) => verifying_key.verify(message, &sig).is_ok(),
             Err(_) => false,

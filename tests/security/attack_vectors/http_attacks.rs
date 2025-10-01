@@ -7,13 +7,13 @@
 //! - Oversized payload attacks
 //! - Malformed HTTP syntax attacks
 
-use vefas_core::VefasClient;
-use vefas_gateway::{VefasGateway, VefasGatewayConfig};
-use vefas_gateway::types::*;
 use reqwest::Client;
 use serde_json::json;
-use tokio::time::Duration;
 use std::collections::HashMap;
+use tokio::time::Duration;
+use vefas_core::VefasClient;
+use vefas_gateway::types::*;
+use vefas_gateway::{VefasGateway, VefasGatewayConfig};
 
 /// Test HTTP request smuggling attacks
 #[cfg(test)]
@@ -32,28 +32,34 @@ mod request_smuggling_tests {
         let payload = ExecuteRequestPayload {
             method: HttpMethod::Post,
             url: "https://httpbin.org/post".to_string(),
-            headers: malicious_headers.into_iter().map(|(k, v)| (k.to_string(), v.to_string())).collect(),
+            headers: malicious_headers
+                .into_iter()
+                .map(|(k, v)| (k.to_string(), v.to_string()))
+                .collect(),
             body: Some("test".to_string()),
             proof_platform: ProofPlatform::Sp1,
             timeout_ms: 30000,
         };
 
         let result = payload.validate();
-        assert!(result.is_err(), "Multiple Content-Length headers should be rejected");
+        assert!(
+            result.is_err(),
+            "Multiple Content-Length headers should be rejected"
+        );
     }
 
     #[tokio::test]
     async fn test_transfer_encoding_chunked_manipulation() {
         // Test Transfer-Encoding manipulation
-        let malicious_headers = vec![
-            ("transfer-encoding", "chunked"),
-            ("content-length", "10"),
-        ];
+        let malicious_headers = vec![("transfer-encoding", "chunked"), ("content-length", "10")];
 
         let payload = ExecuteRequestPayload {
             method: HttpMethod::Post,
             url: "https://httpbin.org/post".to_string(),
-            headers: malicious_headers.into_iter().map(|(k, v)| (k.to_string(), v.to_string())).collect(),
+            headers: malicious_headers
+                .into_iter()
+                .map(|(k, v)| (k.to_string(), v.to_string()))
+                .collect(),
             body: Some("test".to_string()),
             proof_platform: ProofPlatform::Sp1,
             timeout_ms: 30000,
@@ -61,7 +67,10 @@ mod request_smuggling_tests {
 
         let result = payload.validate();
         // Should reject conflicting transfer encoding headers
-        assert!(result.is_err(), "Conflicting Transfer-Encoding and Content-Length should be rejected");
+        assert!(
+            result.is_err(),
+            "Conflicting Transfer-Encoding and Content-Length should be rejected"
+        );
     }
 
     #[test]
@@ -70,7 +79,10 @@ mod request_smuggling_tests {
         let http_10_with_chunked = r#"POST /test HTTP/1.0\r\nTransfer-Encoding: chunked\r\n\r\n"#;
 
         let result = validate_http_request_line(http_10_with_chunked);
-        assert!(result.is_err(), "HTTP/1.0 with chunked encoding should be rejected");
+        assert!(
+            result.is_err(),
+            "HTTP/1.0 with chunked encoding should be rejected"
+        );
     }
 
     #[test]
@@ -111,13 +123,20 @@ mod header_injection_tests {
         // Test CRLF injection in header values
         let malicious_headers = vec![
             ("user-agent", "VEFAS\r\nX-Injected: malicious"),
-            ("referer", "https://example.com\r\n\r\n<script>alert('xss')</script>"),
+            (
+                "referer",
+                "https://example.com\r\n\r\n<script>alert('xss')</script>",
+            ),
             ("authorization", "Bearer token\rSet-Cookie: malicious=true"),
         ];
 
         for (name, value) in malicious_headers {
             let result = validate_header_value(value);
-            assert!(result.is_err(), "CRLF injection in {} header should be rejected", name);
+            assert!(
+                result.is_err(),
+                "CRLF injection in {} header should be rejected",
+                name
+            );
         }
     }
 
@@ -148,7 +167,11 @@ mod header_injection_tests {
 
         for name in malicious_names {
             let result = validate_header_name(name);
-            assert!(result.is_err(), "Malicious header name '{}' should be rejected", name);
+            assert!(
+                result.is_err(),
+                "Malicious header name '{}' should be rejected",
+                name
+            );
         }
     }
 
@@ -157,7 +180,10 @@ mod header_injection_tests {
         // Test extremely large header values
         let oversized_value = "x".repeat(100_000);
         let result = validate_header_value(&oversized_value);
-        assert!(result.is_err(), "Oversized header values should be rejected");
+        assert!(
+            result.is_err(),
+            "Oversized header values should be rejected"
+        );
     }
 
     #[test]
@@ -172,8 +198,10 @@ mod header_injection_tests {
         for value in unicode_attacks {
             let result = validate_header_value(value);
             // Should normalize or reject dangerous Unicode
-            assert!(result.is_err() || !value.contains('\u{0001}'),
-                   "Dangerous Unicode should be handled safely");
+            assert!(
+                result.is_err() || !value.contains('\u{0001}'),
+                "Dangerous Unicode should be handled safely"
+            );
         }
     }
 
@@ -201,7 +229,10 @@ mod header_injection_tests {
             Err("Colons not allowed in header names")
         } else if name.chars().any(|c| c.is_control()) {
             Err("Control characters not allowed in header names")
-        } else if !name.chars().all(|c| c.is_ascii() && (c.is_alphanumeric() || "-_".contains(c))) {
+        } else if !name
+            .chars()
+            .all(|c| c.is_ascii() && (c.is_alphanumeric() || "-_".contains(c)))
+        {
             Err("Invalid characters in header name")
         } else {
             Ok(())
@@ -229,7 +260,10 @@ mod payload_attacks {
         };
 
         let result = payload.validate();
-        assert!(result.is_err(), "Oversized request bodies should be rejected");
+        assert!(
+            result.is_err(),
+            "Oversized request bodies should be rejected"
+        );
     }
 
     #[test]
@@ -246,7 +280,9 @@ mod payload_attacks {
             let payload = ExecuteRequestPayload {
                 method: HttpMethod::Post,
                 url: "https://httpbin.org/post".to_string(),
-                headers: vec![("content-type".to_string(), "application/json".to_string())].into_iter().collect(),
+                headers: vec![("content-type".to_string(), "application/json".to_string())]
+                    .into_iter()
+                    .collect(),
                 body: Some(body.to_string()),
                 proof_platform: ProofPlatform::Sp1,
                 timeout_ms: 30000,
@@ -257,7 +293,10 @@ mod payload_attacks {
             // Either validation catches it or we proceed (server will handle malformed JSON)
             if validation_result.is_ok() {
                 // If validation passes, ensure processing handles malformed JSON gracefully
-                assert!(true, "Malformed JSON should be handled gracefully by the server");
+                assert!(
+                    true,
+                    "Malformed JSON should be handled gracefully by the server"
+                );
             }
         }
     }
@@ -271,7 +310,9 @@ mod payload_attacks {
         let payload = ExecuteRequestPayload {
             method: HttpMethod::Post,
             url: "https://httpbin.org/post".to_string(),
-            headers: vec![("x-binary".to_string(), binary_string.to_string())].into_iter().collect(),
+            headers: vec![("x-binary".to_string(), binary_string.to_string())]
+                .into_iter()
+                .collect(),
             body: Some(binary_string.to_string()),
             proof_platform: ProofPlatform::Sp1,
             timeout_ms: 30000,
@@ -296,14 +337,19 @@ mod payload_attacks {
             headers: vec![
                 ("content-encoding".to_string(), "gzip".to_string()),
                 ("content-type".to_string(), "application/json".to_string()),
-            ].into_iter().collect(),
+            ]
+            .into_iter()
+            .collect(),
             body: Some(repetitive_data),
             proof_platform: ProofPlatform::Sp1,
             timeout_ms: 30000,
         };
 
         let result = payload.validate();
-        assert!(result.is_err(), "Potential compression bombs should be rejected");
+        assert!(
+            result.is_err(),
+            "Potential compression bombs should be rejected"
+        );
     }
 }
 
@@ -321,10 +367,10 @@ mod url_attacks {
             "https://example.com/path?param=value#fragment/../../../etc/passwd",
             "https://user:pass@evil.com@example.com/",
             "https://example.com:65536/", // Invalid port
-            "https://exam\x00ple.com/", // Null byte in domain
+            "https://exam\x00ple.com/",   // Null byte in domain
             "https://example.com/path\r\nHost: evil.com",
             "http://example.com/", // Not HTTPS
-            "ftp://example.com/", // Wrong protocol
+            "ftp://example.com/",  // Wrong protocol
         ];
 
         for url in malicious_urls {
@@ -338,7 +384,11 @@ mod url_attacks {
             };
 
             let result = payload.validate();
-            assert!(result.is_err(), "Malicious URL '{}' should be rejected", url);
+            assert!(
+                result.is_err(),
+                "Malicious URL '{}' should be rejected",
+                url
+            );
         }
     }
 
@@ -346,8 +396,8 @@ mod url_attacks {
     fn test_international_domain_attacks() {
         // Test internationalized domain name attacks
         let idn_attacks = vec![
-            "https://аpple.com/", // Cyrillic 'а' instead of 'a'
-            "https://gооgle.com/", // Cyrillic 'о' instead of 'o'
+            "https://аpple.com/",          // Cyrillic 'а' instead of 'a'
+            "https://gооgle.com/",         // Cyrillic 'о' instead of 'o'
             "https://example\u{202E}com/", // Right-to-left override
             "https://example\u{2066}com/", // Directional isolate
         ];
@@ -366,7 +416,10 @@ mod url_attacks {
             // Should either reject or properly handle IDN
             if result.is_ok() {
                 // Ensure IDN is properly validated and not spoofed
-                assert!(validate_domain_not_spoofed(&url), "IDN spoofing should be detected");
+                assert!(
+                    validate_domain_not_spoofed(&url),
+                    "IDN spoofing should be detected"
+                );
             }
         }
     }
@@ -375,11 +428,11 @@ mod url_attacks {
     fn test_port_and_scheme_validation() {
         // Test port and scheme validation
         let invalid_schemes_ports = vec![
-            ("http://example.com/", false), // Not HTTPS
-            ("https://example.com:80/", true), // HTTPS on HTTP port (suspicious)
-            ("https://example.com:0/", false), // Invalid port 0
+            ("http://example.com/", false),        // Not HTTPS
+            ("https://example.com:80/", true),     // HTTPS on HTTP port (suspicious)
+            ("https://example.com:0/", false),     // Invalid port 0
             ("https://example.com:65536/", false), // Port too high
-            ("https://example.com:-1/", false), // Negative port
+            ("https://example.com:-1/", false),    // Negative port
         ];
 
         for (url, should_pass) in invalid_schemes_ports {
@@ -457,7 +510,10 @@ mod dos_protection_tests {
             .count();
 
         // Should have some rate limiting in effect
-        assert!(rate_limited_count > 0, "Rate limiting should be active for rapid requests");
+        assert!(
+            rate_limited_count > 0,
+            "Rate limiting should be active for rapid requests"
+        );
     }
 
     #[test]
@@ -466,26 +522,31 @@ mod dos_protection_tests {
         let large_payload = ExecuteRequestPayload {
             method: HttpMethod::Post,
             url: "https://httpbin.org/post".to_string(),
-            headers: (0..10000).map(|i| (format!("x-header-{}", i), "value".repeat(1000))).collect(),
+            headers: (0..10000)
+                .map(|i| (format!("x-header-{}", i), "value".repeat(1000)))
+                .collect(),
             body: Some("x".repeat(10 * 1024 * 1024)), // 10MB body
             proof_platform: ProofPlatform::Sp1,
             timeout_ms: 30000,
         };
 
         let result = payload.validate();
-        assert!(result.is_err(), "Large payloads should be rejected to prevent memory exhaustion");
+        assert!(
+            result.is_err(),
+            "Large payloads should be rejected to prevent memory exhaustion"
+        );
     }
 
     #[test]
     fn test_timeout_protection() {
         // Test that timeout values are bounded
         let timeout_tests = vec![
-            (0, false),           // Zero timeout
-            (100, false),         // Too short
-            (30000, true),        // Normal timeout
-            (300000, true),       // Long but acceptable
-            (3600000, false),     // Too long (1 hour)
-            (u32::MAX, false),    // Maximum value
+            (0, false),        // Zero timeout
+            (100, false),      // Too short
+            (30000, true),     // Normal timeout
+            (300000, true),    // Long but acceptable
+            (3600000, false),  // Too long (1 hour)
+            (u32::MAX, false), // Maximum value
         ];
 
         for (timeout_ms, should_pass) in timeout_tests {
@@ -532,7 +593,10 @@ mod gateway_security_integration {
             // Binary data
             "\x00\x01\x02\x03",
             // Extremely large payload
-            &format!(r#"{{"method": "GET", "url": "https://httpbin.org/get", "body": "{}"}}"#, "x".repeat(1000000)),
+            &format!(
+                r#"{{"method": "GET", "url": "https://httpbin.org/get", "body": "{}"}}"#,
+                "x".repeat(1000000)
+            ),
         ];
 
         for payload in malicious_payloads {
@@ -546,8 +610,11 @@ mod gateway_security_integration {
             match response {
                 Ok(resp) => {
                     // Should return 4xx error for malicious input
-                    assert!(resp.status().is_client_error(),
-                           "Malicious payload should return client error, got {}", resp.status());
+                    assert!(
+                        resp.status().is_client_error(),
+                        "Malicious payload should return client error, got {}",
+                        resp.status()
+                    );
                 }
                 Err(_) => {
                     // Network error is also acceptable (connection refused due to malicious payload)
@@ -593,8 +660,11 @@ mod gateway_security_integration {
         ];
 
         for pattern in sensitive_patterns {
-            assert!(!error_text.to_lowercase().contains(&pattern.to_lowercase()),
-                   "Error response should not contain sensitive pattern: {}", pattern);
+            assert!(
+                !error_text.to_lowercase().contains(&pattern.to_lowercase()),
+                "Error response should not contain sensitive pattern: {}",
+                pattern
+            );
         }
     }
 }

@@ -11,14 +11,14 @@
 //! - **Deterministic**: Consistent session data for canonical bundles
 //! - **Validated**: Comprehensive integrity checks on extracted data
 
-use crate::error::{VefasCoreError, Result};
-use crate::transport::TlsTee;
-use crate::transport::AsyncTlsTee;
+use crate::error::{Result, VefasCoreError};
 use crate::keylog::VefasKeyLog;
-use std::net::TcpStream;
-use rustls::{ClientConnection, SupportedCipherSuite, ProtocolVersion};
+use crate::transport::AsyncTlsTee;
+use crate::transport::TlsTee;
 use rustls::pki_types::CertificateDer;
-use vefas_types::{TlsVersion, CipherSuite};
+use rustls::{ClientConnection, ProtocolVersion, SupportedCipherSuite};
+use std::net::TcpStream;
+use vefas_types::{CipherSuite, TlsVersion};
 
 /// Session data extracted from a complete TLS connection
 ///
@@ -79,37 +79,43 @@ impl SessionData {
             // Handshake completed successfully, proceed with extraction
         } else {
             return Err(VefasCoreError::tls_error(
-                "Cannot extract session data: TLS handshake not yet complete"
+                "Cannot extract session data: TLS handshake not yet complete",
             ));
         }
 
         // Extract certificate chain
-        let certificate_chain = conn.peer_certificates()
+        let certificate_chain = conn
+            .peer_certificates()
             .ok_or_else(|| VefasCoreError::tls_error("No certificate chain available"))?
             .iter()
             .map(|cert| cert.clone())
             .collect();
 
         // Extract negotiated cipher suite
-        let negotiated_suite = conn.negotiated_cipher_suite()
+        let negotiated_suite = conn
+            .negotiated_cipher_suite()
             .ok_or_else(|| VefasCoreError::tls_error("No cipher suite negotiated"))?;
 
         // Extract protocol version
-        let protocol_version = conn.protocol_version()
+        let protocol_version = conn
+            .protocol_version()
             .ok_or_else(|| VefasCoreError::tls_error("No protocol version negotiated"))?;
 
         // Verify we're using TLS 1.3
         if protocol_version != ProtocolVersion::TLSv1_3 {
-            return Err(VefasCoreError::tls_error(
-                &format!("Unsupported TLS version: {:?}. Only TLS 1.3 is supported", protocol_version)
-            ));
+            return Err(VefasCoreError::tls_error(&format!(
+                "Unsupported TLS version: {:?}. Only TLS 1.3 is supported",
+                protocol_version
+            )));
         }
 
         // Extract captured bytes from transport
-        let outbound_bytes = tee.outbound_bytes()
-            .map_err(|e| VefasCoreError::extraction_error(&format!("Failed to extract outbound bytes: {}", e)))?;
-        let inbound_bytes = tee.inbound_bytes()
-            .map_err(|e| VefasCoreError::extraction_error(&format!("Failed to extract inbound bytes: {}", e)))?;
+        let outbound_bytes = tee.outbound_bytes().map_err(|e| {
+            VefasCoreError::extraction_error(&format!("Failed to extract outbound bytes: {}", e))
+        })?;
+        let inbound_bytes = tee.inbound_bytes().map_err(|e| {
+            VefasCoreError::extraction_error(&format!("Failed to extract inbound bytes: {}", e))
+        })?;
 
         // Generate connection ID and timestamp
         let connection_id = Self::generate_connection_id(server_name, &outbound_bytes)?;
@@ -148,32 +154,38 @@ impl SessionData {
         // The logic mirrors sync version, using async tee getters
         if conn.is_handshaking() {
             return Err(VefasCoreError::tls_error(
-                "Cannot extract session data: TLS handshake not yet complete"
+                "Cannot extract session data: TLS handshake not yet complete",
             ));
         }
 
-        let certificate_chain = conn.peer_certificates()
+        let certificate_chain = conn
+            .peer_certificates()
             .ok_or_else(|| VefasCoreError::tls_error("No certificate chain available"))?
             .iter()
             .map(|cert| cert.clone())
             .collect();
 
-        let negotiated_suite = conn.negotiated_cipher_suite()
+        let negotiated_suite = conn
+            .negotiated_cipher_suite()
             .ok_or_else(|| VefasCoreError::tls_error("No cipher suite negotiated"))?;
 
-        let protocol_version = conn.protocol_version()
+        let protocol_version = conn
+            .protocol_version()
             .ok_or_else(|| VefasCoreError::tls_error("No protocol version negotiated"))?;
 
         if protocol_version != ProtocolVersion::TLSv1_3 {
-            return Err(VefasCoreError::tls_error(
-                &format!("Unsupported TLS version: {:?}. Only TLS 1.3 is supported", protocol_version)
-            ));
+            return Err(VefasCoreError::tls_error(&format!(
+                "Unsupported TLS version: {:?}. Only TLS 1.3 is supported",
+                protocol_version
+            )));
         }
 
-        let outbound_bytes = tee.outbound_bytes()
-            .map_err(|e| VefasCoreError::extraction_error(&format!("Failed to extract outbound bytes: {}", e)))?;
-        let inbound_bytes = tee.inbound_bytes()
-            .map_err(|e| VefasCoreError::extraction_error(&format!("Failed to extract inbound bytes: {}", e)))?;
+        let outbound_bytes = tee.outbound_bytes().map_err(|e| {
+            VefasCoreError::extraction_error(&format!("Failed to extract outbound bytes: {}", e))
+        })?;
+        let inbound_bytes = tee.inbound_bytes().map_err(|e| {
+            VefasCoreError::extraction_error(&format!("Failed to extract inbound bytes: {}", e))
+        })?;
 
         let connection_id = Self::generate_connection_id(server_name, &outbound_bytes)?;
         let timestamp = std::time::SystemTime::now()
@@ -208,53 +220,65 @@ impl SessionData {
     pub fn validate(&self) -> Result<()> {
         // Validate basic constraints
         if self.outbound_bytes.is_empty() {
-            return Err(VefasCoreError::validation_error("Outbound bytes cannot be empty"));
+            return Err(VefasCoreError::validation_error(
+                "Outbound bytes cannot be empty",
+            ));
         }
 
         if self.inbound_bytes.is_empty() {
-            return Err(VefasCoreError::validation_error("Inbound bytes cannot be empty"));
+            return Err(VefasCoreError::validation_error(
+                "Inbound bytes cannot be empty",
+            ));
         }
 
         if self.certificate_chain.is_empty() {
-            return Err(VefasCoreError::validation_error("Certificate chain cannot be empty"));
+            return Err(VefasCoreError::validation_error(
+                "Certificate chain cannot be empty",
+            ));
         }
 
         if self.server_name.is_empty() {
-            return Err(VefasCoreError::validation_error("Server name cannot be empty"));
+            return Err(VefasCoreError::validation_error(
+                "Server name cannot be empty",
+            ));
         }
 
         // Validate TLS version
         if self.protocol_version != ProtocolVersion::TLSv1_3 {
-            return Err(VefasCoreError::validation_error(
-                &format!("Only TLS 1.3 is supported, got: {:?}", self.protocol_version)
-            ));
+            return Err(VefasCoreError::validation_error(&format!(
+                "Only TLS 1.3 is supported, got: {:?}",
+                self.protocol_version
+            )));
         }
 
         // Validate cipher suite is supported by VEFAS
-        let _vefas_cipher = self.vefas_cipher_suite()
-            .map_err(|e| VefasCoreError::validation_error(&format!("Unsupported cipher suite: {}", e)))?;
+        let _vefas_cipher = self.vefas_cipher_suite().map_err(|e| {
+            VefasCoreError::validation_error(&format!("Unsupported cipher suite: {}", e))
+        })?;
 
         // Validate certificate chain length
         if self.certificate_chain.len() > vefas_types::MAX_CERTIFICATE_CHAIN_LENGTH {
-            return Err(VefasCoreError::validation_error(
-                &format!("Certificate chain too long: {} certificates (max {})",
-                    self.certificate_chain.len(),
-                    vefas_types::MAX_CERTIFICATE_CHAIN_LENGTH)
-            ));
+            return Err(VefasCoreError::validation_error(&format!(
+                "Certificate chain too long: {} certificates (max {})",
+                self.certificate_chain.len(),
+                vefas_types::MAX_CERTIFICATE_CHAIN_LENGTH
+            )));
         }
 
         // Validate byte array sizes aren't excessive
         const MAX_REASONABLE_BYTES: usize = 1024 * 1024; // 1MB
         if self.outbound_bytes.len() > MAX_REASONABLE_BYTES {
-            return Err(VefasCoreError::validation_error(
-                &format!("Outbound bytes too large: {} bytes", self.outbound_bytes.len())
-            ));
+            return Err(VefasCoreError::validation_error(&format!(
+                "Outbound bytes too large: {} bytes",
+                self.outbound_bytes.len()
+            )));
         }
 
         if self.inbound_bytes.len() > MAX_REASONABLE_BYTES {
-            return Err(VefasCoreError::validation_error(
-                &format!("Inbound bytes too large: {} bytes", self.inbound_bytes.len())
-            ));
+            return Err(VefasCoreError::validation_error(&format!(
+                "Inbound bytes too large: {} bytes",
+                self.inbound_bytes.len()
+            )));
         }
 
         // Basic TLS record format validation
@@ -274,11 +298,20 @@ impl SessionData {
         match suite_name.as_str() {
             suite if suite.contains("TLS13_AES_128_GCM_SHA256") => Ok(CipherSuite::Aes128GcmSha256),
             suite if suite.contains("TLS13_AES_256_GCM_SHA384") => Ok(CipherSuite::Aes256GcmSha384),
-            suite if suite.contains("TLS13_CHACHA20_POLY1305_SHA256") => Ok(CipherSuite::ChaCha20Poly1305Sha256),
-            suite if suite.contains("TLS13_AES_128_CCM_SHA256") => Ok(CipherSuite::Aes128CcmSha256),
-            _ => Err(VefasCoreError::tls_error(
-                &format!("Unsupported cipher suite: {:?}", self.negotiated_suite.suite())
-            )),
+            suite if suite.contains("TLS13_CHACHA20_POLY1305_SHA256") => {
+                Ok(CipherSuite::ChaCha20Poly1305Sha256)
+            }
+            suite if suite.contains("TLS13_AES_128_CCM_SHA256") => {
+                // CCM cipher suites not yet supported (H-4 priority)
+                Err(VefasCoreError::tls_error(&format!(
+                    "AES-CCM cipher suites not yet implemented (H-4 priority): {:?}",
+                    self.negotiated_suite.suite()
+                )))
+            }
+            _ => Err(VefasCoreError::tls_error(&format!(
+                "Unsupported cipher suite: {:?}",
+                self.negotiated_suite.suite()
+            ))),
         }
     }
 
@@ -325,12 +358,16 @@ impl SessionData {
     /// without doing full parsing.
     fn validate_tls_records(&self) -> Result<()> {
         // Validate outbound bytes start with valid TLS record
-        if let Some(validation_error) = Self::validate_tls_record_header(&self.outbound_bytes, "outbound") {
+        if let Some(validation_error) =
+            Self::validate_tls_record_header(&self.outbound_bytes, "outbound")
+        {
             return Err(validation_error);
         }
 
         // Validate inbound bytes start with valid TLS record
-        if let Some(validation_error) = Self::validate_tls_record_header(&self.inbound_bytes, "inbound") {
+        if let Some(validation_error) =
+            Self::validate_tls_record_header(&self.inbound_bytes, "inbound")
+        {
             return Err(validation_error);
         }
 
@@ -345,9 +382,10 @@ impl SessionData {
     /// - Length (2 bytes): Should be reasonable
     fn validate_tls_record_header(bytes: &[u8], direction: &str) -> Option<VefasCoreError> {
         if bytes.len() < 5 {
-            return Some(VefasCoreError::validation_error(
-                &format!("{} bytes too short for TLS record header", direction)
-            ));
+            return Some(VefasCoreError::validation_error(&format!(
+                "{} bytes too short for TLS record header",
+                direction
+            )));
         }
 
         let record_type = bytes[0];
@@ -356,25 +394,33 @@ impl SessionData {
 
         // Validate record type
         match record_type {
-            0x14 | 0x15 | 0x16 | 0x17 => {}, // Valid TLS record types
-            _ => return Some(VefasCoreError::validation_error(
-                &format!("Invalid TLS record type in {} bytes: 0x{:02x}", direction, record_type)
-            )),
+            0x14 | 0x15 | 0x16 | 0x17 => {} // Valid TLS record types
+            _ => {
+                return Some(VefasCoreError::validation_error(&format!(
+                    "Invalid TLS record type in {} bytes: 0x{:02x}",
+                    direction, record_type
+                )))
+            }
         }
 
         // Validate version (allow common TLS versions)
         match version {
-            0x0301 | 0x0302 | 0x0303 | 0x0304 => {}, // TLS 1.0-1.3
-            _ => return Some(VefasCoreError::validation_error(
-                &format!("Invalid TLS version in {} bytes: 0x{:04x}", direction, version)
-            )),
+            0x0301 | 0x0302 | 0x0303 | 0x0304 => {} // TLS 1.0-1.3
+            _ => {
+                return Some(VefasCoreError::validation_error(&format!(
+                    "Invalid TLS version in {} bytes: 0x{:04x}",
+                    direction, version
+                )))
+            }
         }
 
         // Validate length is reasonable
-        if length > 16384 + 256 { // Max TLS record length + some tolerance
-            return Some(VefasCoreError::validation_error(
-                &format!("TLS record length too large in {} bytes: {}", direction, length)
-            ));
+        if length > 16384 + 256 {
+            // Max TLS record length + some tolerance
+            return Some(VefasCoreError::validation_error(&format!(
+                "TLS record length too large in {} bytes: {}",
+                direction, length
+            )));
         }
 
         None
@@ -384,8 +430,8 @@ impl SessionData {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rustls::pki_types::CertificateDer;
     use rustls::crypto::aws_lc_rs::cipher_suite;
+    use rustls::pki_types::CertificateDer;
 
     /// Helper to create a mock certificate chain for testing
     fn create_test_certificate_chain() -> Vec<CertificateDer<'static>> {
@@ -398,10 +444,10 @@ mod tests {
     fn create_test_tls_record() -> Vec<u8> {
         vec![
             0x16, 0x03, 0x03, 0x00, 0x10, // TLS record header (handshake, TLS 1.2, length 16)
-            0x01, 0x00, 0x00, 0x0c,       // Handshake message header
-            0x03, 0x03,                   // TLS version in handshake
-            0x00, 0x00, 0x00, 0x00,       // Random data
-            0x00, 0x00, 0x00, 0x00,       // More random data
+            0x01, 0x00, 0x00, 0x0c, // Handshake message header
+            0x03, 0x03, // TLS version in handshake
+            0x00, 0x00, 0x00, 0x00, // Random data
+            0x00, 0x00, 0x00, 0x00, // More random data
         ]
     }
 
@@ -557,14 +603,17 @@ mod tests {
     #[test]
     fn test_generate_connection_id() {
         let outbound_bytes = create_test_tls_record();
-        let connection_id1 = SessionData::generate_connection_id("example.com", &outbound_bytes).unwrap();
-        let connection_id2 = SessionData::generate_connection_id("example.com", &outbound_bytes).unwrap();
+        let connection_id1 =
+            SessionData::generate_connection_id("example.com", &outbound_bytes).unwrap();
+        let connection_id2 =
+            SessionData::generate_connection_id("example.com", &outbound_bytes).unwrap();
 
         // Same inputs should produce same connection ID
         assert_eq!(connection_id1, connection_id2);
 
         // Different server name should produce different connection ID
-        let connection_id3 = SessionData::generate_connection_id("different.com", &outbound_bytes).unwrap();
+        let connection_id3 =
+            SessionData::generate_connection_id("different.com", &outbound_bytes).unwrap();
         assert_ne!(connection_id1, connection_id3);
     }
 

@@ -41,9 +41,7 @@ pub struct HttpProcessor {
 impl HttpProcessor {
     /// Create a new HTTP processor
     pub fn new() -> Self {
-        Self {
-            buffer: Vec::new(),
-        }
+        Self { buffer: Vec::new() }
     }
 
     /// Parse HTTP request from raw bytes
@@ -53,16 +51,23 @@ impl HttpProcessor {
 
         match req.parse(data)? {
             Status::Complete(amt) => {
-                let method = req.method.ok_or_else(|| {
-                    VefasCoreError::HttpError("Missing HTTP method".to_string())
-                })?;
+                let method = req
+                    .method
+                    .ok_or_else(|| VefasCoreError::HttpError("Missing HTTP method".to_string()))?;
 
-                let path = req.path.ok_or_else(|| {
-                    VefasCoreError::HttpError("Missing HTTP path".to_string())
-                })?;
+                let path = req
+                    .path
+                    .ok_or_else(|| VefasCoreError::HttpError("Missing HTTP path".to_string()))?;
 
-                let headers = req.headers.iter()
-                    .map(|h| (h.name.to_string(), String::from_utf8_lossy(h.value).to_string()))
+                let headers = req
+                    .headers
+                    .iter()
+                    .map(|h| {
+                        (
+                            h.name.to_string(),
+                            String::from_utf8_lossy(h.value).to_string(),
+                        )
+                    })
                     .collect();
 
                 let body = if amt < data.len() {
@@ -79,7 +84,9 @@ impl HttpProcessor {
                     raw_bytes: data.to_vec(),
                 })
             }
-            Status::Partial => Err(VefasCoreError::HttpError("Incomplete HTTP request".to_string())),
+            Status::Partial => Err(VefasCoreError::HttpError(
+                "Incomplete HTTP request".to_string(),
+            )),
         }
     }
 
@@ -94,8 +101,15 @@ impl HttpProcessor {
                     VefasCoreError::HttpError("Missing HTTP status code".to_string())
                 })?;
 
-                let headers = resp.headers.iter()
-                    .map(|h| (h.name.to_string(), String::from_utf8_lossy(h.value).to_string()))
+                let headers = resp
+                    .headers
+                    .iter()
+                    .map(|h| {
+                        (
+                            h.name.to_string(),
+                            String::from_utf8_lossy(h.value).to_string(),
+                        )
+                    })
                     .collect();
 
                 let body = if amt < data.len() {
@@ -111,12 +125,18 @@ impl HttpProcessor {
                     raw_bytes: data.to_vec(),
                 })
             }
-            Status::Partial => Err(VefasCoreError::HttpError("Incomplete HTTP response".to_string())),
+            Status::Partial => Err(VefasCoreError::HttpError(
+                "Incomplete HTTP response".to_string(),
+            )),
         }
     }
 
     /// Extract HTTP data from TLS application data records
-    pub fn extract_http_data(&mut self, request_data: &[u8], response_data: &[u8]) -> Result<HttpData> {
+    pub fn extract_http_data(
+        &mut self,
+        request_data: &[u8],
+        response_data: &[u8],
+    ) -> Result<HttpData> {
         let request = self.parse_http_request(request_data)?;
         let response = self.parse_http_response(response_data)?;
 
@@ -153,7 +173,9 @@ impl HttpProcessor {
         let response_start = self.find_http_response_start(app_data, request_start)?;
 
         if response_start > app_data.len() {
-            return Err(VefasCoreError::HttpError("No HTTP response found in application data".to_string()));
+            return Err(VefasCoreError::HttpError(
+                "No HTTP response found in application data".to_string(),
+            ));
         }
 
         let request_data = app_data[request_start..response_start].to_vec();
@@ -165,7 +187,15 @@ impl HttpProcessor {
     /// Find the start of HTTP request in application data
     fn find_http_request_start(&self, data: &[u8]) -> Result<usize> {
         // Look for HTTP method patterns at start of data
-        let http_methods: &[&[u8]] = &[b"GET ", b"POST ", b"PUT ", b"DELETE ", b"HEAD ", b"OPTIONS ", b"PATCH "];
+        let http_methods: &[&[u8]] = &[
+            b"GET ",
+            b"POST ",
+            b"PUT ",
+            b"DELETE ",
+            b"HEAD ",
+            b"OPTIONS ",
+            b"PATCH ",
+        ];
 
         for &method in http_methods {
             if data.starts_with(method) {
@@ -185,7 +215,9 @@ impl HttpProcessor {
             }
         }
 
-        Err(VefasCoreError::HttpError("No HTTP request found in application data".to_string()))
+        Err(VefasCoreError::HttpError(
+            "No HTTP request found in application data".to_string(),
+        ))
     }
 
     /// Find the start of HTTP response in application data
@@ -196,27 +228,40 @@ impl HttpProcessor {
         let http_response_patterns: &[&[u8]] = &[b"HTTP/1.1 ", b"HTTP/1.0 ", b"HTTP/2"];
 
         for &pattern in http_response_patterns {
-            if let Some(pos) = search_data.windows(pattern.len())
-                .position(|window| window == pattern) {
+            if let Some(pos) = search_data
+                .windows(pattern.len())
+                .position(|window| window == pattern)
+            {
                 return Ok(after_offset + pos);
             }
         }
 
-        Err(VefasCoreError::HttpError("No HTTP response found in application data".to_string()))
+        Err(VefasCoreError::HttpError(
+            "No HTTP response found in application data".to_string(),
+        ))
     }
 
     /// Process response body, handling Transfer-Encoding and Content-Encoding (RFC 7230)
     pub fn process_response_body(&self, response: &HttpResponse) -> Result<Vec<u8>> {
         // Apply Transfer-Encoding (chunked) first
         let is_chunked = response.headers.iter().any(|(k, v)| {
-            if !k.eq_ignore_ascii_case("Transfer-Encoding") { return false; }
-            v.split(',').any(|t| t.trim().eq_ignore_ascii_case("chunked"))
+            if !k.eq_ignore_ascii_case("Transfer-Encoding") {
+                return false;
+            }
+            v.split(',')
+                .any(|t| t.trim().eq_ignore_ascii_case("chunked"))
         });
 
-        let mut body = if is_chunked { self.dechunk(&response.body)? } else { response.body.clone() };
+        let mut body = if is_chunked {
+            self.dechunk(&response.body)?
+        } else {
+            response.body.clone()
+        };
 
         // Then apply Content-Encoding (compression)
-        let content_encoding = response.headers.iter()
+        let content_encoding = response
+            .headers
+            .iter()
             .find(|(name, _)| name.eq_ignore_ascii_case("Content-Encoding"))
             .map(|(_, value)| value.to_lowercase());
 
@@ -226,7 +271,10 @@ impl HttpProcessor {
             Some("br") | Some("brotli") => self.decompress_brotli(&body),
             Some("identity") | None => Ok(body),
             Some(encoding) => {
-                eprintln!("Warning: Unknown content encoding '{}', returning raw body", encoding);
+                eprintln!(
+                    "Warning: Unknown content encoding '{}', returning raw body",
+                    encoding
+                );
                 Ok(body)
             }
         }
@@ -243,19 +291,28 @@ impl HttpProcessor {
             let line_start = i;
             let mut line_end = None;
             while i + 1 < data.len() {
-                if data[i] == b'\r' && data[i + 1] == b'\n' { line_end = Some(i); break; }
+                if data[i] == b'\r' && data[i + 1] == b'\n' {
+                    line_end = Some(i);
+                    break;
+                }
                 i += 1;
             }
-            let end = line_end.ok_or_else(|| VefasCoreError::HttpError("Malformed chunk-size line".to_string()))?;
+            let end = line_end.ok_or_else(|| {
+                VefasCoreError::HttpError("Malformed chunk-size line".to_string())
+            })?;
             let line = &data[line_start..end];
             i = end + 2; // skip CRLF
 
             // Extract size up to ';' (ignore chunk extensions)
             let semi = line.iter().position(|&b| b == b';').unwrap_or(line.len());
-            let size_str = std::str::from_utf8(&line[..semi]).map_err(|_| VefasCoreError::HttpError("Invalid chunk-size UTF-8".to_string()))?;
+            let size_str = std::str::from_utf8(&line[..semi])
+                .map_err(|_| VefasCoreError::HttpError("Invalid chunk-size UTF-8".to_string()))?;
             let size_trimmed = size_str.trim();
-            if size_trimmed.is_empty() { return Err(VefasCoreError::HttpError("Empty chunk-size".to_string())); }
-            let size = usize::from_str_radix(size_trimmed, 16).map_err(|_| VefasCoreError::HttpError("Invalid hex chunk-size".to_string()))?;
+            if size_trimmed.is_empty() {
+                return Err(VefasCoreError::HttpError("Empty chunk-size".to_string()));
+            }
+            let size = usize::from_str_radix(size_trimmed, 16)
+                .map_err(|_| VefasCoreError::HttpError("Invalid hex chunk-size".to_string()))?;
 
             if size == 0 {
                 // Parse optional trailer headers until CRLF CRLF
@@ -263,21 +320,41 @@ impl HttpProcessor {
                     let mut k = i;
                     let mut eol = None;
                     while k + 1 < data.len() {
-                        if data[k] == b'\r' && data[k + 1] == b'\n' { eol = Some(k); break; }
+                        if data[k] == b'\r' && data[k + 1] == b'\n' {
+                            eol = Some(k);
+                            break;
+                        }
                         k += 1;
                     }
-                    let eol_pos = eol.ok_or_else(|| VefasCoreError::HttpError("Malformed trailer".to_string()))?;
-                    if eol_pos == i { i += 2; break; } // empty line -> end of trailers
+                    let eol_pos = eol.ok_or_else(|| {
+                        VefasCoreError::HttpError("Malformed trailer".to_string())
+                    })?;
+                    if eol_pos == i {
+                        i += 2;
+                        break;
+                    } // empty line -> end of trailers
                     i = eol_pos + 2; // next line
                 }
                 break;
             }
 
-            if i + size + 2 > data.len() { return Err(VefasCoreError::HttpError("Chunk exceeds buffer".to_string())); }
+            if i + size + 2 > data.len() {
+                return Err(VefasCoreError::HttpError(
+                    "Chunk exceeds buffer".to_string(),
+                ));
+            }
             out.extend_from_slice(&data[i..i + size]);
-            if out.len() > MAX_DECHUNKED_SIZE { return Err(VefasCoreError::HttpError("Dechunked body too large".to_string())); }
+            if out.len() > MAX_DECHUNKED_SIZE {
+                return Err(VefasCoreError::HttpError(
+                    "Dechunked body too large".to_string(),
+                ));
+            }
             i += size;
-            if !(data[i] == b'\r' && data[i + 1] == b'\n') { return Err(VefasCoreError::HttpError("Missing CRLF after chunk-data".to_string())); }
+            if !(data[i] == b'\r' && data[i + 1] == b'\n') {
+                return Err(VefasCoreError::HttpError(
+                    "Missing CRLF after chunk-data".to_string(),
+                ));
+            }
             i += 2;
         }
 
@@ -294,14 +371,17 @@ impl HttpProcessor {
             let mut decoder = GzDecoder::new(data);
             let mut decompressed = Vec::new();
 
-            decoder.read_to_end(&mut decompressed)
-                .map_err(|e| VefasCoreError::HttpError(format!("Failed to decompress gzip content: {}", e)))?;
+            decoder.read_to_end(&mut decompressed).map_err(|e| {
+                VefasCoreError::HttpError(format!("Failed to decompress gzip content: {}", e))
+            })?;
 
             Ok(decompressed)
         }
         #[cfg(not(feature = "flate2"))]
         {
-            Err(VefasCoreError::HttpError("Gzip decompression not supported - compile with 'flate2' feature".to_string()))
+            Err(VefasCoreError::HttpError(
+                "Gzip decompression not supported - compile with 'flate2' feature".to_string(),
+            ))
         }
     }
 
@@ -315,14 +395,17 @@ impl HttpProcessor {
             let mut decoder = DeflateDecoder::new(data);
             let mut decompressed = Vec::new();
 
-            decoder.read_to_end(&mut decompressed)
-                .map_err(|e| VefasCoreError::HttpError(format!("Failed to decompress deflate content: {}", e)))?;
+            decoder.read_to_end(&mut decompressed).map_err(|e| {
+                VefasCoreError::HttpError(format!("Failed to decompress deflate content: {}", e))
+            })?;
 
             Ok(decompressed)
         }
         #[cfg(not(feature = "flate2"))]
         {
-            Err(VefasCoreError::HttpError("Deflate decompression not supported - compile with 'flate2' feature".to_string()))
+            Err(VefasCoreError::HttpError(
+                "Deflate decompression not supported - compile with 'flate2' feature".to_string(),
+            ))
         }
     }
 
@@ -336,14 +419,17 @@ impl HttpProcessor {
             let mut decoder = Decompressor::new(data, 4096); // 4KB buffer
             let mut decompressed = Vec::new();
 
-            decoder.read_to_end(&mut decompressed)
-                .map_err(|e| VefasCoreError::HttpError(format!("Failed to decompress brotli content: {}", e)))?;
+            decoder.read_to_end(&mut decompressed).map_err(|e| {
+                VefasCoreError::HttpError(format!("Failed to decompress brotli content: {}", e))
+            })?;
 
             Ok(decompressed)
         }
         #[cfg(not(feature = "brotli"))]
         {
-            Err(VefasCoreError::HttpError("Brotli decompression not supported - compile with 'brotli' feature".to_string()))
+            Err(VefasCoreError::HttpError(
+                "Brotli decompression not supported - compile with 'brotli' feature".to_string(),
+            ))
         }
     }
 
@@ -426,8 +512,14 @@ mod tests {
         assert_eq!(request.method, "GET");
         assert_eq!(request.path, "/test");
         assert_eq!(request.headers.len(), 2);
-        assert_eq!(request.headers[0], ("Host".to_string(), "example.com".to_string()));
-        assert_eq!(request.headers[1], ("User-Agent".to_string(), "test".to_string()));
+        assert_eq!(
+            request.headers[0],
+            ("Host".to_string(), "example.com".to_string())
+        );
+        assert_eq!(
+            request.headers[1],
+            ("User-Agent".to_string(), "test".to_string())
+        );
     }
 
     #[test]
@@ -473,7 +565,10 @@ mod tests {
         let request_bytes = HttpProcessor::build_request(
             "POST",
             "/api/data",
-            &[("Host", "api.example.com"), ("Content-Type", "application/json")],
+            &[
+                ("Host", "api.example.com"),
+                ("Content-Type", "application/json"),
+            ],
             Some(body),
         );
 
@@ -489,7 +584,9 @@ mod tests {
         let request_data = b"GET /test HTTP/1.1\r\nHost: example.com\r\n\r\n";
         let response_data = b"HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nHello World";
 
-        let http_data = processor.extract_http_data(request_data, response_data).unwrap();
+        let http_data = processor
+            .extract_http_data(request_data, response_data)
+            .unwrap();
 
         assert_eq!(http_data.method, "GET");
         assert_eq!(http_data.path, "/test");
@@ -504,6 +601,9 @@ mod tests {
 
         let result = processor.parse_http_request(incomplete_data);
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), VefasCoreError::HttpError { .. }));
+        assert!(matches!(
+            result.unwrap_err(),
+            VefasCoreError::HttpError { .. }
+        ));
     }
 }

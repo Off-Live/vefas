@@ -3,16 +3,14 @@
 //! This module defines the input data structure that flows from host to guest,
 //! containing all captured network session data required for verification.
 
-use alloc::{string::String, vec::Vec, string::ToString};
+use crate::utils::format_decimal;
+use crate::{
+    tls::{CertificateChain, CipherSuite, HandshakeData, SessionKeys, TlsVersion},
+    VefasError, VefasResult, MAX_DOMAIN_LENGTH, MAX_HTTP_BODY_SIZE, VEFAS_PROTOCOL_VERSION,
+};
+use alloc::{string::String, string::ToString, vec::Vec};
 use core::mem::size_of;
 use serde::{Deserialize, Serialize};
-use crate::{
-    VefasError, VefasResult,
-    tls::{TlsVersion, CipherSuite, SessionKeys, HandshakeData, CertificateChain},
-    MAX_DOMAIN_LENGTH, MAX_HTTP_BODY_SIZE,
-    VEFAS_PROTOCOL_VERSION,
-};
-use crate::utils::format_decimal;
 
 /// Complete input data for VEFAS verification
 ///
@@ -64,18 +62,28 @@ impl VefasInput {
     pub fn validate(&self) -> VefasResult<()> {
         // Check protocol version
         if self.version != VEFAS_PROTOCOL_VERSION {
-            return Err(VefasError::version_mismatch(VEFAS_PROTOCOL_VERSION, self.version));
+            return Err(VefasError::version_mismatch(
+                VEFAS_PROTOCOL_VERSION,
+                self.version,
+            ));
         }
 
         // Validate domain name
         if self.domain.is_empty() {
-            return Err(VefasError::invalid_input("domain", "Domain cannot be empty"));
+            return Err(VefasError::invalid_input(
+                "domain",
+                "Domain cannot be empty",
+            ));
         }
 
         if self.domain.len() > MAX_DOMAIN_LENGTH {
             return Err(VefasError::invalid_input(
                 "domain",
-                &("Domain too long: ".to_string() + &format_decimal(self.domain.len()) + " characters (max " + &format_decimal(MAX_DOMAIN_LENGTH) + ")"),
+                &("Domain too long: ".to_string()
+                    + &format_decimal(self.domain.len())
+                    + " characters (max "
+                    + &format_decimal(MAX_DOMAIN_LENGTH)
+                    + ")"),
             ));
         }
 
@@ -149,8 +157,11 @@ impl VefasInput {
         }
 
         // Must not start or end with hyphen or dot
-        if domain.starts_with('-') || domain.ends_with('-') ||
-           domain.starts_with('.') || domain.ends_with('.') {
+        if domain.starts_with('-')
+            || domain.ends_with('-')
+            || domain.starts_with('.')
+            || domain.ends_with('.')
+        {
             return false;
         }
 
@@ -269,7 +280,12 @@ impl TlsSessionData {
             + self.handshake.transcript.len()
             + self.handshake.client_key_share.len()
             + self.handshake.server_key_share.len()
-            + self.handshake.extensions.iter().map(|e| e.data.len() + 8).sum::<usize>()
+            + self
+                .handshake
+                .extensions
+                .iter()
+                .map(|e| e.data.len() + 8)
+                .sum::<usize>()
             + self.session_keys.client_application_secret.len()
             + self.session_keys.server_application_secret.len()
             + self.session_keys.client_application_key.len()
@@ -279,7 +295,12 @@ impl TlsSessionData {
             + self.session_keys.handshake_secret.len()
             + self.session_keys.master_secret.len()
             + self.session_keys.resumption_master_secret.len()
-            + self.certificate_chain.certificates.iter().map(|c| c.len()).sum::<usize>()
+            + self
+                .certificate_chain
+                .certificates
+                .iter()
+                .map(|c| c.len())
+                .sum::<usize>()
     }
 }
 
@@ -386,13 +407,18 @@ impl VefasMetadata {
             + self.tags.iter().map(|s| s.len()).sum::<usize>()
             + self.session_id.as_ref().map(|s| s.len()).unwrap_or(0)
             + self.capture_source.len()
-            + self.custom_fields.iter().map(|(k, v)| k.len() + v.len()).sum::<usize>()
+            + self
+                .custom_fields
+                .iter()
+                .map(|(k, v)| k.len() + v.len())
+                .sum::<usize>()
     }
 
     /// Basic IP address validation
     fn is_valid_ip(&self, ip: &str) -> bool {
         // Very basic IP validation - in production should use proper IP parsing
-        ip.chars().all(|c| c.is_ascii_digit() || c == '.' || c == ':')
+        ip.chars()
+            .all(|c| c.is_ascii_digit() || c == '.' || c == ':')
             && !ip.is_empty()
             && ip.len() <= 45 // Max IPv6 length
     }
@@ -444,7 +470,8 @@ mod tests {
             handshake,
             session_keys,
             cert_chain,
-        ).unwrap();
+        )
+        .unwrap();
 
         let metadata = VefasMetadata::new("test-capture".to_string());
 
@@ -455,7 +482,8 @@ mod tests {
             b"HTTP/1.1 200 OK\r\n\r\n".to_vec(),
             1640995200, // 2022-01-01 00:00:00 UTC
             metadata,
-        ).unwrap();
+        )
+        .unwrap();
 
         assert_eq!(input.domain, "example.com");
         assert_eq!(input.version, VEFAS_PROTOCOL_VERSION);
@@ -472,7 +500,8 @@ mod tests {
                 create_test_handshake_data(),
                 create_test_session_keys(),
                 create_test_certificate_chain(),
-            ).unwrap(),
+            )
+            .unwrap(),
             http_request: Vec::new(),
             http_response: Vec::new(),
             timestamp: 1640995200,
@@ -493,7 +522,8 @@ mod tests {
                 create_test_handshake_data(),
                 create_test_session_keys(),
                 create_test_certificate_chain(),
-            ).unwrap(),
+            )
+            .unwrap(),
             http_request: Vec::new(),
             http_response: Vec::new(),
             timestamp: 1640995200,
@@ -517,7 +547,8 @@ mod tests {
                 create_test_handshake_data(),
                 create_test_session_keys(),
                 create_test_certificate_chain(),
-            ).unwrap(),
+            )
+            .unwrap(),
             http_request: b"test request".to_vec(),
             http_response: b"test response".to_vec(),
             timestamp: 1640995200,
@@ -551,7 +582,8 @@ mod tests {
                 create_test_handshake_data(),
                 create_test_session_keys(),
                 create_test_certificate_chain(),
-            ).unwrap(),
+            )
+            .unwrap(),
             http_request: Vec::new(),
             http_response: Vec::new(),
             timestamp: 1640995200,

@@ -6,26 +6,31 @@
 //!
 //! Built on axum for production-grade performance, observability, and reliability.
 
-use std::sync::Arc;
 use std::net::SocketAddr;
+use std::sync::Arc;
 use std::time::Duration;
 
-use axum::{extract::{State, Json}, response::Json as ResponseJson, routing::{post, get}, Router};
+use axum::{
+    extract::{Json, State},
+    response::Json as ResponseJson,
+    routing::{get, post},
+    Router,
+};
 use tower_http::cors::CorsLayer;
 use tracing::{info, instrument};
 
 use vefas_core::{VefasClient, VefasCoreError};
 use vefas_types::VefasCanonicalBundle;
 
-pub mod handlers;
-pub mod types;
-pub mod proof;
 pub mod error;
+pub mod handlers;
+pub mod proof;
+pub mod types;
 
-pub use handlers::*;
-pub use types::*;
-pub use proof::*;
 pub use error::*;
+pub use handlers::*;
+pub use proof::*;
+pub use types::*;
 
 /// VEFAS Gateway configuration
 #[derive(Debug, Clone)]
@@ -65,12 +70,13 @@ pub struct VefasGatewayState {
 impl VefasGatewayState {
     /// Create new gateway state
     pub async fn new(config: VefasGatewayConfig) -> Result<Self, VefasGatewayError> {
-        let vefas_client = VefasClient::new()
-            .map_err(|e| VefasGatewayError::Initialization(format!("Failed to create VEFAS client: {}", e)))?;
+        let vefas_client = VefasClient::new().map_err(|e| {
+            VefasGatewayError::Initialization(format!("Failed to create VEFAS client: {}", e))
+        })?;
 
-        let proof_service = ProofService::new()
-            .await
-            .map_err(|e| VefasGatewayError::Initialization(format!("Failed to create proof service: {}", e)))?;
+        let proof_service = ProofService::new().await.map_err(|e| {
+            VefasGatewayError::Initialization(format!("Failed to create proof service: {}", e))
+        })?;
 
         Ok(Self {
             config,
@@ -123,17 +129,18 @@ impl VefasGateway {
     /// Start the HTTP server
     #[instrument(skip(self))]
     pub async fn serve(&self) -> Result<(), VefasGatewayError> {
-        let addr: SocketAddr = self.state.config.bind_address.parse()
-            .map_err(|e| VefasGatewayError::Configuration(format!("Invalid bind address: {}", e)))?;
+        let addr: SocketAddr = self.state.config.bind_address.parse().map_err(|e| {
+            VefasGatewayError::Configuration(format!("Invalid bind address: {}", e))
+        })?;
 
         let router = self.router();
 
         info!("Starting VEFAS Gateway server on {}", addr);
         info!("Configuration: {:?}", self.state.config);
 
-        let listener = tokio::net::TcpListener::bind(&addr)
-            .await
-            .map_err(|e| VefasGatewayError::Network(format!("Failed to bind to {}: {}", addr, e)))?;
+        let listener = tokio::net::TcpListener::bind(&addr).await.map_err(|e| {
+            VefasGatewayError::Network(format!("Failed to bind to {}: {}", addr, e))
+        })?;
 
         info!("VEFAS Gateway listening on {}", addr);
 
@@ -153,8 +160,8 @@ impl VefasGateway {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tower::ServiceExt;
     use axum::http::{Request, StatusCode};
+    use tower::ServiceExt;
 
     #[tokio::test]
     async fn test_gateway_creation() {

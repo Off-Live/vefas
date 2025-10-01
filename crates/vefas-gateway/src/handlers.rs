@@ -1,21 +1,17 @@
 //! HTTP request handlers for VEFAS Gateway endpoints
 
-use std::sync::Arc;
-use std::time::{SystemTime, UNIX_EPOCH};
 use axum::{
-    extract::{State, Json},
-    http::{StatusCode, HeaderMap},
+    extract::{Json, State},
+    http::{HeaderMap, StatusCode},
     response::Json as ResponseJson,
 };
-use tracing::{info, error, debug, warn, instrument};
-use uuid::Uuid;
 use chrono::Utc;
+use std::sync::Arc;
+use std::time::{SystemTime, UNIX_EPOCH};
+use tracing::{debug, error, info, instrument, warn};
+use uuid::Uuid;
 
-use crate::{
-    VefasGatewayState,
-    types::*,
-    error::*,
-};
+use crate::{error::*, types::*, VefasGatewayState};
 use vefas_types::VefasCanonicalBundle;
 
 /// Handle POST /requests endpoint - Execute TLS request and generate proof
@@ -33,24 +29,27 @@ pub async fn execute_request(
     info!("Processing execute request for {}", payload.url);
 
     // Validate the request payload
-    payload.validate()
+    payload
+        .validate()
         .map_err(|e| VefasGatewayError::InvalidRequest(e))?;
 
     debug!("Request validation passed for session {}", session_id);
 
-    // Execute the HTTPS request using vefas-core - this returns a complete VefasCanonicalBundle
-    let bundle = {
+    // Execute the HTTPS request using vefas-core - returns bundle and HTTP data
+    let (bundle, http_data) = {
         let headers = payload.get_headers_vec();
-        let body = payload.get_body_bytes()
+        let body = payload
+            .get_body_bytes()
             .map_err(|e| VefasGatewayError::InvalidRequest(e))?;
 
         // Convert headers to the format expected by vefas-core
-        let headers_str_refs: Option<Vec<(&str, &str)>> = headers.as_ref().map(|h| {
-            h.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect()
-        });
+        let headers_str_refs: Option<Vec<(&str, &str)>> = headers
+            .as_ref()
+            .map(|h| h.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect());
 
         debug!("Executing HTTPS request via vefas-core");
-        state.vefas_client
+        state
+            .vefas_client
             .execute_request(
                 &payload.method.to_string(),
                 &payload.url,
@@ -66,18 +65,25 @@ pub async fn execute_request(
 
     info!("Successfully captured TLS session data for {}", payload.url);
 
-    // Extract HTTP response data from the VefasCanonicalBundle (vefas-core already processed it)
+    // Extract HTTP response data from the HttpData returned by vefas-core
     let http_response = HttpResponseData {
-        status_code: bundle.expected_status,
-        headers: std::collections::HashMap::new(),
-        body: String::new(), // For now, body extraction would require TLS record decryption
+        status_code: http_data.status_code,
+        headers: http_data
+            .headers
+            .into_iter()
+            .collect::<std::collections::HashMap<_, _>>(),
+        body: String::from_utf8_lossy(&http_data.response_body).to_string(),
     };
 
-    debug!("HTTP response extracted: status={}, body_size={}",
-           http_response.status_code, http_response.body.len());
+    debug!(
+        "HTTP response extracted: status={}, body_size={}",
+        http_response.status_code,
+        http_response.body.len()
+    );
 
     // Generate cryptographic proof
-    let proof_data = state.proof_service
+    let proof_data = state
+        .proof_service
         .generate_proof(&bundle, &payload.proof_platform)
         .await
         .map_err(|e| {
@@ -85,7 +91,10 @@ pub async fn execute_request(
             e
         })?;
 
-    info!("Successfully generated proof using {} platform", proof_data.platform);
+    info!(
+        "Successfully generated proof using {} platform",
+        proof_data.platform
+    );
 
     // Create response
     let response = ExecuteRequestResponse {
@@ -107,16 +116,21 @@ pub async fn verify_proof(
     State(state): State<Arc<VefasGatewayState>>,
     Json(payload): Json<VerifyProofPayload>,
 ) -> Result<ResponseJson<VerifyProofResponse>, VefasGatewayError> {
-    info!("Processing proof verification request for platform: {}", payload.proof.platform);
+    info!(
+        "Processing proof verification request for platform: {}",
+        payload.proof.platform
+    );
 
     // Validate the request payload
-    payload.validate()
+    payload
+        .validate()
         .map_err(|e| VefasGatewayError::InvalidRequest(e))?;
 
     debug!("Verification request validation passed");
 
     // Verify the proof
-    let verification_result = state.proof_service
+    let verification_result = state
+        .proof_service
         .verify_proof(&payload.proof, payload.expected_claim.as_ref())
         .await
         .map_err(|e| {
@@ -125,9 +139,15 @@ pub async fn verify_proof(
         })?;
 
     if verification_result.valid {
-        info!("Proof verification successful for platform: {}", payload.proof.platform);
+        info!(
+            "Proof verification successful for platform: {}",
+            payload.proof.platform
+        );
     } else {
-        warn!("Proof verification failed for platform: {}", payload.proof.platform);
+        warn!(
+            "Proof verification failed for platform: {}",
+            payload.proof.platform
+        );
     }
 
     // Create response
@@ -178,14 +198,13 @@ pub async fn root() -> ResponseJson<RootResponse> {
     ResponseJson(response)
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use axum::body::Body;
-    use tower::ServiceExt;
-    use axum::http::{Request, Method};
+    use axum::http::{Method, Request};
     use std::collections::HashMap;
+    use tower::ServiceExt;
 
     async fn create_test_state() -> Arc<VefasGatewayState> {
         use crate::VefasGatewayConfig;
@@ -240,7 +259,7 @@ mod tests {
 
     #[test]
     fn test_verify_proof_payload_validation() {
-        use vefas_types::{VefasPerformanceMetrics, VefasExecutionMetadata};
+        use vefas_types::{VefasExecutionMetadata, VefasPerformanceMetrics};
 
         let performance = VefasPerformanceMetrics {
             total_cycles: 1000000,
@@ -282,7 +301,8 @@ mod tests {
             1234567890,
             performance,
             execution_metadata,
-        ).unwrap();
+        )
+        .unwrap();
 
         use base64::{engine::general_purpose, Engine as _};
         let proof_data = ProofData {

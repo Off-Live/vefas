@@ -7,12 +7,12 @@
 //! - Timing attacks
 //! - Protocol confusion attacks
 
-use vefas_crypto::tls_parser::*;
-use vefas_types::{VefasCanonicalBundle, TlsHandshakeMessage};
-use vefas_crypto_native::NativeCryptoProvider;
-use vefas_crypto::CryptoProvider;
-use std::time::{Duration, Instant};
 use hex_literal::hex;
+use std::time::{Duration, Instant};
+use vefas_crypto::tls_parser::*;
+use vefas_crypto::CryptoProvider;
+use vefas_crypto_native::NativeCryptoProvider;
+use vefas_types::{TlsHandshakeMessage, VefasCanonicalBundle};
 
 /// Test certificate validation bypass attempts
 #[cfg(test)]
@@ -25,9 +25,14 @@ mod certificate_attacks {
         let malicious_cert = create_self_signed_certificate();
 
         let provider = NativeCryptoProvider::new();
-        let result = provider.verify_certificate_chain(&malicious_cert, "example.com").await;
+        let result = provider
+            .verify_certificate_chain(&malicious_cert, "example.com")
+            .await;
 
-        assert!(result.is_err(), "Self-signed certificates should be rejected");
+        assert!(
+            result.is_err(),
+            "Self-signed certificates should be rejected"
+        );
     }
 
     #[tokio::test]
@@ -36,7 +41,9 @@ mod certificate_attacks {
         let expired_cert = create_expired_certificate();
 
         let provider = NativeCryptoProvider::new();
-        let result = provider.verify_certificate_chain(&expired_cert, "example.com").await;
+        let result = provider
+            .verify_certificate_chain(&expired_cert, "example.com")
+            .await;
 
         assert!(result.is_err(), "Expired certificates should be rejected");
     }
@@ -47,9 +54,14 @@ mod certificate_attacks {
         let wrong_hostname_cert = create_certificate_for_domain("malicious.com");
 
         let provider = NativeCryptoProvider::new();
-        let result = provider.verify_certificate_chain(&wrong_hostname_cert, "example.com").await;
+        let result = provider
+            .verify_certificate_chain(&wrong_hostname_cert, "example.com")
+            .await;
 
-        assert!(result.is_err(), "Wrong hostname certificates should be rejected");
+        assert!(
+            result.is_err(),
+            "Wrong hostname certificates should be rejected"
+        );
     }
 
     #[tokio::test]
@@ -58,9 +70,14 @@ mod certificate_attacks {
         let weak_cert = create_certificate_with_weak_signature();
 
         let provider = NativeCryptoProvider::new();
-        let result = provider.verify_certificate_chain(&weak_cert, "example.com").await;
+        let result = provider
+            .verify_certificate_chain(&weak_cert, "example.com")
+            .await;
 
-        assert!(result.is_err(), "Weak signature algorithms should be rejected");
+        assert!(
+            result.is_err(),
+            "Weak signature algorithms should be rejected"
+        );
     }
 
     #[test]
@@ -68,14 +85,17 @@ mod certificate_attacks {
         // Test incomplete certificate chain
         let incomplete_chain = vec![
             // Only leaf certificate, missing intermediate and root
-            hex!("308201a830820110020101300d06092a864886f70d01010b05003012311030")
+            hex!("308201a830820110020101300d06092a864886f70d01010b05003012311030"),
         ];
 
         let parser = CertificateParser::new().unwrap();
         let result = parser.parse_certificate_chain(&incomplete_chain);
 
         // Should fail due to incomplete chain
-        assert!(result.is_err(), "Incomplete certificate chains should be rejected");
+        assert!(
+            result.is_err(),
+            "Incomplete certificate chains should be rejected"
+        );
     }
 
     #[test]
@@ -86,7 +106,10 @@ mod certificate_attacks {
         let validator = BundleValidator::new().unwrap();
         let result = validator.validate_bundle(&bundle_with_wrong_cert);
 
-        assert!(result.is_err(), "Certificate substitution should be detected");
+        assert!(
+            result.is_err(),
+            "Certificate substitution should be detected"
+        );
     }
 
     // Helper functions for creating malicious certificates
@@ -117,7 +140,8 @@ mod certificate_attacks {
             server_random: vec![0; 32],
             handshake_messages: vec![
                 // Certificate message with wrong domain
-                hex!("0b000100308201a830820110020101300d06092a864886f70d01010b05003012311030").to_vec()
+                hex!("0b000100308201a830820110020101300d06092a864886f70d01010b05003012311030")
+                    .to_vec(),
             ],
             application_records: vec![],
             http_request_data: b"GET / HTTP/1.1\r\nHost: legitimate.com\r\n\r\n".to_vec(),
@@ -175,15 +199,18 @@ mod key_exchange_attacks {
     fn test_small_subgroup_attack_resistance() {
         // Test resistance to small subgroup attacks on DH
         let small_subgroup_keys = vec![
-            vec![0x01], // Identity element
-            vec![0x02], // Small order element
+            vec![0x01],     // Identity element
+            vec![0x02],     // Small order element
             vec![0xFF; 32], // All ones
         ];
 
         let provider = NativeCryptoProvider::new();
         for key in small_subgroup_keys {
             let result = provider.validate_ecdhe_public_key(&key);
-            assert!(result.is_err(), "Small subgroup attacks should be prevented");
+            assert!(
+                result.is_err(),
+                "Small subgroup attacks should be prevented"
+            );
         }
     }
 
@@ -194,7 +221,9 @@ mod key_exchange_attacks {
 
     impl KeyReuseTracker {
         fn new() -> Self {
-            Self { used_keys: std::collections::HashSet::new() }
+            Self {
+                used_keys: std::collections::HashSet::new(),
+            }
         }
 
         fn check_key_reuse(&mut self, key: &[u8]) -> Result<(), &'static str> {
@@ -226,7 +255,11 @@ mod downgrade_attacks {
             let result = validator.validate_bundle(&bundle);
 
             if version != "1.3" {
-                assert!(result.is_err(), "TLS version {} should be rejected", version);
+                assert!(
+                    result.is_err(),
+                    "TLS version {} should be rejected",
+                    version
+                );
             }
         }
     }
@@ -246,23 +279,26 @@ mod downgrade_attacks {
             let validator = BundleValidator::new().unwrap();
             let result = validator.validate_bundle(&bundle);
 
-            assert!(result.is_err(), "Weak cipher suite {} should be rejected", cipher);
+            assert!(
+                result.is_err(),
+                "Weak cipher suite {} should be rejected",
+                cipher
+            );
         }
     }
 
     #[test]
     fn test_signature_algorithm_downgrade_prevention() {
         // Test prevention of downgrade to weak signature algorithms
-        let weak_signatures = vec![
-            "rsa_pkcs1_sha1",
-            "rsa_pkcs1_md5",
-            "dsa_sha1",
-            "ecdsa_sha1",
-        ];
+        let weak_signatures = vec!["rsa_pkcs1_sha1", "rsa_pkcs1_md5", "dsa_sha1", "ecdsa_sha1"];
 
         for sig_alg in weak_signatures {
             let result = validate_signature_algorithm(sig_alg);
-            assert!(result.is_err(), "Weak signature algorithm {} should be rejected", sig_alg);
+            assert!(
+                result.is_err(),
+                "Weak signature algorithm {} should be rejected",
+                sig_alg
+            );
         }
     }
 
@@ -298,9 +334,14 @@ mod downgrade_attacks {
 
     fn validate_signature_algorithm(sig_alg: &str) -> Result<(), &'static str> {
         match sig_alg {
-            "rsa_pss_rsae_sha256" | "rsa_pss_rsae_sha384" | "rsa_pss_rsae_sha512" |
-            "ecdsa_secp256r1_sha256" | "ecdsa_secp384r1_sha384" | "ecdsa_secp521r1_sha512" |
-            "ed25519" | "ed448" => Ok(()),
+            "rsa_pss_rsae_sha256"
+            | "rsa_pss_rsae_sha384"
+            | "rsa_pss_rsae_sha512"
+            | "ecdsa_secp256r1_sha256"
+            | "ecdsa_secp384r1_sha384"
+            | "ecdsa_secp521r1_sha512"
+            | "ed25519"
+            | "ed448" => Ok(()),
             _ => Err("Weak or unsupported signature algorithm"),
         }
     }
@@ -340,7 +381,11 @@ mod timing_attacks {
         let min_time = valid_time.min(early_error_time).min(late_error_time);
 
         let variance_ratio = max_time.as_nanos() as f64 / min_time.as_nanos() as f64;
-        assert!(variance_ratio < 1.5, "Certificate validation timing variance too high: {:.2}", variance_ratio);
+        assert!(
+            variance_ratio < 1.5,
+            "Certificate validation timing variance too high: {:.2}",
+            variance_ratio
+        );
     }
 
     #[test]
@@ -363,8 +408,11 @@ mod timing_attacks {
 
         // Times should be roughly similar
         let variance_ratio = valid_time.as_nanos() as f64 / invalid_time.as_nanos() as f64;
-        assert!((0.5..=2.0).contains(&variance_ratio),
-                "Signature verification timing variance too high: {:.2}", variance_ratio);
+        assert!(
+            (0.5..=2.0).contains(&variance_ratio),
+            "Signature verification timing variance too high: {:.2}",
+            variance_ratio
+        );
     }
 
     // Helper functions for timing tests
@@ -404,7 +452,10 @@ mod protocol_confusion_attacks {
         let validator = BundleValidator::new().unwrap();
         let result = validator.validate_bundle(&reordered_bundle);
 
-        assert!(result.is_err(), "Reordered handshake messages should be detected");
+        assert!(
+            result.is_err(),
+            "Reordered handshake messages should be detected"
+        );
     }
 
     #[test]
@@ -415,7 +466,10 @@ mod protocol_confusion_attacks {
         let validator = BundleValidator::new().unwrap();
         let result = validator.validate_bundle(&duplicate_bundle);
 
-        assert!(result.is_err(), "Duplicate handshake messages should be detected");
+        assert!(
+            result.is_err(),
+            "Duplicate handshake messages should be detected"
+        );
     }
 
     #[test]
@@ -426,7 +480,10 @@ mod protocol_confusion_attacks {
         let validator = BundleValidator::new().unwrap();
         let result = validator.validate_bundle(&incomplete_bundle);
 
-        assert!(result.is_err(), "Missing mandatory messages should be detected");
+        assert!(
+            result.is_err(),
+            "Missing mandatory messages should be detected"
+        );
     }
 
     #[test]
@@ -485,7 +542,7 @@ mod protocol_confusion_attacks {
             server_random: vec![0; 32],
             handshake_messages: vec![
                 hex!("01000000").to_vec(), // ClientHello
-                // Missing ServerHello, Certificate, etc.
+                                           // Missing ServerHello, Certificate, etc.
             ],
             application_records: vec![],
             http_request_data: b"GET / HTTP/1.1\r\n\r\n".to_vec(),

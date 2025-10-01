@@ -12,15 +12,15 @@ mod security {
         pub mod tls_parser_fuzz;
     }
     pub mod attack_vectors {
-        pub mod tls_attacks;
         pub mod http_attacks;
+        pub mod tls_attacks;
     }
     pub mod penetration {
         pub mod attack_scenarios;
     }
 }
 
-use security::penetration::attack_scenarios::{VefasPenetrationTester, PenetrationTestResults};
+use security::penetration::attack_scenarios::{PenetrationTestResults, VefasPenetrationTester};
 
 /// Comprehensive security test suite runner
 pub struct VefasSecurityTestSuite {
@@ -35,8 +35,12 @@ impl VefasSecurityTestSuite {
         Self {
             gateway_url: std::env::var("VEFAS_GATEWAY_TEST_URL").ok(),
             enable_fuzzing: std::env::var("VEFAS_ENABLE_FUZZING").unwrap_or_default() == "true",
-            enable_penetration_testing: std::env::var("VEFAS_ENABLE_PENETRATION_TESTING").unwrap_or_default() == "true",
-            enable_performance_testing: std::env::var("VEFAS_ENABLE_PERFORMANCE_TESTING").unwrap_or_default() == "true",
+            enable_penetration_testing: std::env::var("VEFAS_ENABLE_PENETRATION_TESTING")
+                .unwrap_or_default()
+                == "true",
+            enable_performance_testing: std::env::var("VEFAS_ENABLE_PERFORMANCE_TESTING")
+                .unwrap_or_default()
+                == "true",
         }
     }
 
@@ -98,10 +102,26 @@ impl VefasSecurityTestSuite {
         // This would run them if we had a fuzzing framework setup
 
         // For now, we'll simulate successful fuzzing
-        results.add_fuzz_test("tls_record_parsing", true, "No crashes detected in 1000 iterations");
-        results.add_fuzz_test("handshake_message_parsing", true, "No crashes detected in 1000 iterations");
-        results.add_fuzz_test("certificate_parsing", true, "No crashes detected in 1000 iterations");
-        results.add_fuzz_test("bundle_validation", true, "No crashes detected in 1000 iterations");
+        results.add_fuzz_test(
+            "tls_record_parsing",
+            true,
+            "No crashes detected in 1000 iterations",
+        );
+        results.add_fuzz_test(
+            "handshake_message_parsing",
+            true,
+            "No crashes detected in 1000 iterations",
+        );
+        results.add_fuzz_test(
+            "certificate_parsing",
+            true,
+            "No crashes detected in 1000 iterations",
+        );
+        results.add_fuzz_test(
+            "bundle_validation",
+            true,
+            "No crashes detected in 1000 iterations",
+        );
 
         results
     }
@@ -111,14 +131,30 @@ impl VefasSecurityTestSuite {
         let mut results = AttackVectorResults::new();
 
         // TLS Attack Tests
-        results.add_test("certificate_validation", true, "All certificate attacks blocked");
-        results.add_test("key_exchange_attacks", true, "All key exchange attacks blocked");
+        results.add_test(
+            "certificate_validation",
+            true,
+            "All certificate attacks blocked",
+        );
+        results.add_test(
+            "key_exchange_attacks",
+            true,
+            "All key exchange attacks blocked",
+        );
         results.add_test("downgrade_attacks", true, "All downgrade attacks prevented");
         results.add_test("timing_attacks", true, "No timing vulnerabilities detected");
-        results.add_test("protocol_confusion", true, "All protocol confusion attacks blocked");
+        results.add_test(
+            "protocol_confusion",
+            true,
+            "All protocol confusion attacks blocked",
+        );
 
         // HTTP Attack Tests
-        results.add_test("request_smuggling", true, "Request smuggling prevention active");
+        results.add_test(
+            "request_smuggling",
+            true,
+            "Request smuggling prevention active",
+        );
         results.add_test("header_injection", true, "Header injection attacks blocked");
         results.add_test("payload_attacks", true, "Payload attacks prevented");
         results.add_test("url_attacks", true, "URL parsing attacks blocked");
@@ -143,7 +179,11 @@ impl VefasSecurityTestSuite {
 
         // Test parsing performance with large inputs
         let large_input_test = self.test_large_input_performance().await;
-        results.add_test("large_input_parsing", large_input_test.0, &large_input_test.1);
+        results.add_test(
+            "large_input_parsing",
+            large_input_test.0,
+            &large_input_test.1,
+        );
 
         // Test concurrent request handling
         let concurrent_test = self.test_concurrent_request_performance().await;
@@ -164,9 +204,18 @@ impl VefasSecurityTestSuite {
 
         let elapsed = start.elapsed();
         if elapsed < Duration::from_secs(1) {
-            (true, format!("Large input parsed in {}ms", elapsed.as_millis()))
+            (
+                true,
+                format!("Large input parsed in {}ms", elapsed.as_millis()),
+            )
         } else {
-            (false, format!("Large input parsing took too long: {}ms", elapsed.as_millis()))
+            (
+                false,
+                format!(
+                    "Large input parsing took too long: {}ms",
+                    elapsed.as_millis()
+                ),
+            )
         }
     }
 
@@ -177,7 +226,10 @@ impl VefasSecurityTestSuite {
         tokio::time::sleep(Duration::from_millis(200)).await;
 
         let elapsed = start.elapsed();
-        (true, format!("Concurrent requests handled in {}ms", elapsed.as_millis()))
+        (
+            true,
+            format!("Concurrent requests handled in {}ms", elapsed.as_millis()),
+        )
     }
 
     async fn test_memory_usage_limits(&self) -> (bool, String) {
@@ -225,29 +277,47 @@ impl SecurityTestResults {
 
     pub fn summary(&self) -> String {
         let mut summary = String::new();
-        summary.push_str(&format!("Total execution time: {:.2}s\n", self.total_execution_time.as_secs_f64()));
+        summary.push_str(&format!(
+            "Total execution time: {:.2}s\n",
+            self.total_execution_time.as_secs_f64()
+        ));
 
         if let Some(fuzzing) = &self.fuzzing_results {
-            summary.push_str(&format!("Fuzzing: {} tests, {} passed\n", fuzzing.total_tests, fuzzing.passed_tests));
+            summary.push_str(&format!(
+                "Fuzzing: {} tests, {} passed\n",
+                fuzzing.total_tests, fuzzing.passed_tests
+            ));
         }
 
         if let Some(attack_vectors) = &self.attack_vector_results {
-            summary.push_str(&format!("Attack Vectors: {} tests, {} passed\n", attack_vectors.total_tests, attack_vectors.passed_tests));
+            summary.push_str(&format!(
+                "Attack Vectors: {} tests, {} passed\n",
+                attack_vectors.total_tests, attack_vectors.passed_tests
+            ));
         }
 
         if let Some(penetration) = &self.penetration_results {
-            summary.push_str(&format!("Penetration: {} tests, {} vulnerabilities found\n", penetration.total_tests, penetration.vulnerabilities_found));
+            summary.push_str(&format!(
+                "Penetration: {} tests, {} vulnerabilities found\n",
+                penetration.total_tests, penetration.vulnerabilities_found
+            ));
         }
 
         if let Some(performance) = &self.performance_results {
-            summary.push_str(&format!("Performance: {} tests, {} passed\n", performance.total_tests, performance.passed_tests));
+            summary.push_str(&format!(
+                "Performance: {} tests, {} passed\n",
+                performance.total_tests, performance.passed_tests
+            ));
         }
 
         let total_vulnerabilities = self.total_vulnerabilities();
         if total_vulnerabilities == 0 {
             summary.push_str("✅ No security vulnerabilities detected\n");
         } else {
-            summary.push_str(&format!("❌ {} security vulnerabilities detected\n", total_vulnerabilities));
+            summary.push_str(&format!(
+                "❌ {} security vulnerabilities detected\n",
+                total_vulnerabilities
+            ));
         }
 
         summary
@@ -298,7 +368,8 @@ impl FuzzingResults {
     }
 
     pub fn add_fuzz_test(&mut self, name: &str, passed: bool, description: &str) {
-        self.tests.push((name.to_string(), passed, description.to_string()));
+        self.tests
+            .push((name.to_string(), passed, description.to_string()));
         self.total_tests += 1;
         if passed {
             self.passed_tests += 1;
@@ -324,7 +395,8 @@ impl AttackVectorResults {
     }
 
     pub fn add_test(&mut self, name: &str, passed: bool, description: &str) {
-        self.tests.push((name.to_string(), passed, description.to_string()));
+        self.tests
+            .push((name.to_string(), passed, description.to_string()));
         self.total_tests += 1;
         if passed {
             self.passed_tests += 1;
@@ -350,7 +422,8 @@ impl PerformanceSecurityResults {
     }
 
     pub fn add_test(&mut self, name: &str, passed: bool, description: &str) {
-        self.tests.push((name.to_string(), passed, description.to_string()));
+        self.tests
+            .push((name.to_string(), passed, description.to_string()));
         self.total_tests += 1;
         if passed {
             self.passed_tests += 1;
@@ -374,7 +447,10 @@ mod tests {
         println!("{}", results.summary());
 
         // Assert no vulnerabilities in basic tests
-        assert!(results.is_secure(), "Security tests detected vulnerabilities");
+        assert!(
+            results.is_secure(),
+            "Security tests detected vulnerabilities"
+        );
     }
 
     #[tokio::test]

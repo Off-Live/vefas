@@ -5,13 +5,13 @@
 //! include rigorous bounds checking and validation to ensure secure operation
 //! in zero-knowledge contexts.
 
+use alloc::{format, vec::Vec};
 
-
-use alloc::{vec::Vec, format};
-
-use vefas_types::{VefasResult, VefasError, tls::CipherSuite};
-use crate::input_validation::{SafeParser, validate_tls_record_header, validate_handshake_header, parse_24bit_length};
+use crate::input_validation::{
+    parse_24bit_length, validate_handshake_header, validate_tls_record_header, SafeParser,
+};
 use crate::traits::VefasCrypto;
+use vefas_types::{tls::CipherSuite, VefasError, VefasResult};
 
 /// Parsed TLS handshake message
 #[derive(Debug, Clone)]
@@ -75,7 +75,7 @@ fn parse_raw_handshake(msg: &[u8]) -> Option<(u8, usize, &[u8])> {
 
     // Validate handshake type
     match hstype {
-        0x01 | 0x02 | 0x0b | 0x0f | 0x14 => {}, // Valid types: ClientHello, ServerHello, Certificate, CertificateVerify, Finished
+        0x01 | 0x02 | 0x0b | 0x0f | 0x14 => {} // Valid types: ClientHello, ServerHello, Certificate, CertificateVerify, Finished
         _ => return None,
     }
 
@@ -111,7 +111,7 @@ fn parse_tls_record_handshake(msg: &[u8]) -> Option<(u8, usize, &[u8])> {
     // Validate TLS version (must be 1.2 or 1.3)
     let version = u16::from_be_bytes([msg[1], msg[2]]);
     match version {
-        0x0303 | 0x0304 => {}, // TLS 1.2 or 1.3
+        0x0303 | 0x0304 => {} // TLS 1.2 or 1.3
         _ => return None,
     }
 
@@ -139,45 +139,62 @@ pub fn parse_server_cipher_suite(server_hello: &[u8]) -> VefasResult<u16> {
         .ok_or_else(|| VefasError::invalid_input("server_hello", "Malformed handshake"))?;
 
     if typ != 0x02 {
-        return Err(VefasError::invalid_input("server_hello", "Unexpected handshake type"));
+        return Err(VefasError::invalid_input(
+            "server_hello",
+            "Unexpected handshake type",
+        ));
     }
 
     // ServerHello minimum length check
     // legacy_version(2) + random(32) + session_id_length(1) + cipher_suite(2) + compression_method(1)
     if body.len() < 38 {
-        return Err(VefasError::invalid_input("server_hello", "ServerHello too short (minimum 38 bytes)"));
+        return Err(VefasError::invalid_input(
+            "server_hello",
+            "ServerHello too short (minimum 38 bytes)",
+        ));
     }
 
     let mut parser = SafeParser::new(body);
 
     // Parse legacy_version
-    let _version = parser.read_u16()
+    let _version = parser
+        .read_u16()
         .ok_or_else(|| VefasError::invalid_input("server_hello", "Cannot read legacy_version"))?;
 
     // Parse random (32 bytes)
-    let _random = parser.read_bytes(32)
+    let _random = parser
+        .read_bytes(32)
         .ok_or_else(|| VefasError::invalid_input("server_hello", "Cannot read server random"))?;
 
     // Parse session_id_length and session_id
-    let sid_len = parser.read_u8()
-        .ok_or_else(|| VefasError::invalid_input("server_hello", "Cannot read session ID length"))? as usize;
+    let sid_len = parser
+        .read_u8()
+        .ok_or_else(|| VefasError::invalid_input("server_hello", "Cannot read session ID length"))?
+        as usize;
 
     if sid_len > 32 {
-        return Err(VefasError::invalid_input("server_hello", "Session ID too long (max 32 bytes)"));
+        return Err(VefasError::invalid_input(
+            "server_hello",
+            "Session ID too long (max 32 bytes)",
+        ));
     }
 
-    let _session_id = parser.read_bytes(sid_len)
+    let _session_id = parser
+        .read_bytes(sid_len)
         .ok_or_else(|| VefasError::invalid_input("server_hello", "Cannot read session ID"))?;
 
     // Parse cipher_suite
-    let suite = parser.read_u16()
+    let suite = parser
+        .read_u16()
         .ok_or_else(|| VefasError::invalid_input("server_hello", "Cannot read cipher suite"))?;
 
     // Validate cipher suite is supported
     match suite {
         0x1301 | 0x1302 | 0x1303 => Ok(suite), // TLS 1.3 cipher suites
-        _ => Err(VefasError::invalid_input("server_hello",
-            &format!("Unsupported cipher suite: 0x{:04x}", suite)))
+        _ => Err(VefasError::invalid_input(
+            "server_hello",
+            &format!("Unsupported cipher suite: 0x{:04x}", suite),
+        )),
     }
 }
 
@@ -187,11 +204,17 @@ pub fn parse_server_hello_key_share(server_hello: &[u8]) -> VefasResult<KeyShare
         .ok_or_else(|| VefasError::invalid_input("server_hello", "Malformed handshake"))?;
 
     if typ != 0x02 {
-        return Err(VefasError::invalid_input("server_hello", "Unexpected handshake type"));
+        return Err(VefasError::invalid_input(
+            "server_hello",
+            "Unexpected handshake type",
+        ));
     }
 
     if body.len() < 2 + 32 + 1 + 2 + 1 + 2 {
-        return Err(VefasError::invalid_input("server_hello", "ServerHello too short for key_share"));
+        return Err(VefasError::invalid_input(
+            "server_hello",
+            "ServerHello too short for key_share",
+        ));
     }
 
     let mut parser = SafeParser::new(body);
@@ -199,11 +222,16 @@ pub fn parse_server_hello_key_share(server_hello: &[u8]) -> VefasResult<KeyShare
     // Skip legacy_version, random, session_id
     parser.skip(2); // legacy_version
     parser.skip(32); // random
-    let sid_len = parser.read_u8()
-        .ok_or_else(|| VefasError::invalid_input("server_hello", "Cannot read session ID length"))? as usize;
+    let sid_len = parser
+        .read_u8()
+        .ok_or_else(|| VefasError::invalid_input("server_hello", "Cannot read session ID length"))?
+        as usize;
 
     if sid_len > 32 {
-        return Err(VefasError::invalid_input("server_hello", "Session ID too long"));
+        return Err(VefasError::invalid_input(
+            "server_hello",
+            "Session ID too long",
+        ));
     }
 
     parser.skip(sid_len); // session_id
@@ -211,11 +239,16 @@ pub fn parse_server_hello_key_share(server_hello: &[u8]) -> VefasResult<KeyShare
     parser.skip(1); // compression_method
 
     // Parse extensions
-    let ext_len = parser.read_u16()
-        .ok_or_else(|| VefasError::invalid_input("server_hello", "Cannot read extensions length"))? as usize;
+    let ext_len = parser
+        .read_u16()
+        .ok_or_else(|| VefasError::invalid_input("server_hello", "Cannot read extensions length"))?
+        as usize;
 
     if parser.remaining() < ext_len {
-        return Err(VefasError::invalid_input("server_hello", "Extensions length exceeds available data"));
+        return Err(VefasError::invalid_input(
+            "server_hello",
+            "Extensions length exceeds available data",
+        ));
     }
 
     let extensions_start = parser.offset();
@@ -223,33 +256,48 @@ pub fn parse_server_hello_key_share(server_hello: &[u8]) -> VefasResult<KeyShare
 
     // Parse individual extensions
     while parser.offset() < extensions_end && parser.remaining() >= 4 {
-        let ext_type = parser.read_u16()
-            .ok_or_else(|| VefasError::invalid_input("server_hello", "Cannot read extension type"))?;
+        let ext_type = parser.read_u16().ok_or_else(|| {
+            VefasError::invalid_input("server_hello", "Cannot read extension type")
+        })?;
 
-        let ext_len = parser.read_u16()
-            .ok_or_else(|| VefasError::invalid_input("server_hello", "Cannot read extension length"))? as usize;
+        let ext_len = parser.read_u16().ok_or_else(|| {
+            VefasError::invalid_input("server_hello", "Cannot read extension length")
+        })? as usize;
 
         if parser.remaining() < ext_len {
-            return Err(VefasError::invalid_input("server_hello", "Extension length exceeds available data"));
+            return Err(VefasError::invalid_input(
+                "server_hello",
+                "Extension length exceeds available data",
+            ));
         }
 
-        if ext_type == 0x0033 { // key_share extension
+        if ext_type == 0x0033 {
+            // key_share extension
             if ext_len < 4 {
-                return Err(VefasError::invalid_input("server_hello", "key_share extension too short"));
+                return Err(VefasError::invalid_input(
+                    "server_hello",
+                    "key_share extension too short",
+                ));
             }
 
-            let group = parser.read_u16()
-                .ok_or_else(|| VefasError::invalid_input("server_hello", "Cannot read key_share group"))?;
+            let group = parser.read_u16().ok_or_else(|| {
+                VefasError::invalid_input("server_hello", "Cannot read key_share group")
+            })?;
 
-            let key_len = parser.read_u16()
-                .ok_or_else(|| VefasError::invalid_input("server_hello", "Cannot read key_share length"))? as usize;
+            let key_len = parser.read_u16().ok_or_else(|| {
+                VefasError::invalid_input("server_hello", "Cannot read key_share length")
+            })? as usize;
 
             if parser.remaining() < key_len {
-                return Err(VefasError::invalid_input("server_hello", "key_share key length exceeds available data"));
+                return Err(VefasError::invalid_input(
+                    "server_hello",
+                    "key_share key length exceeds available data",
+                ));
             }
 
-            let key_data = parser.read_bytes(key_len)
-                .ok_or_else(|| VefasError::invalid_input("server_hello", "Cannot read key_share data"))?;
+            let key_data = parser.read_bytes(key_len).ok_or_else(|| {
+                VefasError::invalid_input("server_hello", "Cannot read key_share data")
+            })?;
 
             return Ok(KeyShare {
                 group,
@@ -261,7 +309,10 @@ pub fn parse_server_hello_key_share(server_hello: &[u8]) -> VefasResult<KeyShare
         }
     }
 
-    Err(VefasError::invalid_input("server_hello", "key_share extension not found"))
+    Err(VefasError::invalid_input(
+        "server_hello",
+        "key_share extension not found",
+    ))
 }
 
 /// Get cipher suite name from ID
@@ -296,12 +347,9 @@ pub fn compute_transcript_hash<C: VefasCrypto>(
     }
 
     match cipher_suite {
-        CipherSuite::Aes128GcmSha256 | CipherSuite::ChaCha20Poly1305Sha256 | CipherSuite::Aes128CcmSha256 => {
-            crypto.sha256(&transcript).to_vec()
-        }
-        CipherSuite::Aes256GcmSha384 => {
-            crypto.sha384(&transcript).to_vec()
-        }
+        CipherSuite::Aes128GcmSha256
+        | CipherSuite::ChaCha20Poly1305Sha256 => crypto.sha256(&transcript).to_vec(),
+        CipherSuite::Aes256GcmSha384 => crypto.sha384(&transcript).to_vec(),
     }
 }
 
@@ -345,7 +393,10 @@ pub fn hkdf_expand_label<C: VefasCrypto>(
 /// Remove TLS 1.3 padding and inner content type from plaintext
 pub fn remove_tls13_padding(plaintext: &mut Vec<u8>) -> VefasResult<()> {
     if plaintext.is_empty() {
-        return Err(VefasError::invalid_input("tls_record", "Empty plaintext after decryption"));
+        return Err(VefasError::invalid_input(
+            "tls_record",
+            "Empty plaintext after decryption",
+        ));
     }
 
     // Remove trailing zero padding
@@ -357,7 +408,10 @@ pub fn remove_tls13_padding(plaintext: &mut Vec<u8>) -> VefasResult<()> {
     if !plaintext.is_empty() {
         plaintext.pop();
     } else {
-        return Err(VefasError::invalid_input("tls_record", "No inner content type found"));
+        return Err(VefasError::invalid_input(
+            "tls_record",
+            "No inner content type found",
+        ));
     }
 
     Ok(())
@@ -375,12 +429,18 @@ pub fn decrypt_application_record<C: VefasCrypto>(
 
     // Must be application data
     if content_type != 23 {
-        return Err(VefasError::invalid_input("tls_record", "Not application_data record"));
+        return Err(VefasError::invalid_input(
+            "tls_record",
+            "Not application_data record",
+        ));
     }
 
     // Additional length validations
     if declared_len < 16 {
-        return Err(VefasError::invalid_input("tls_record", "Declared length too short for AES-GCM"));
+        return Err(VefasError::invalid_input(
+            "tls_record",
+            "Declared length too short for AES-GCM",
+        ));
     }
 
     // AAD is the 5-byte record header
@@ -394,7 +454,7 @@ pub fn decrypt_application_record<C: VefasCrypto>(
     if key.len() != 16 || iv.len() != 12 {
         return Err(VefasError::crypto_error(
             vefas_types::errors::CryptoErrorType::InvalidKeyLength,
-            "Invalid key/IV length from HKDF"
+            "Invalid key/IV length from HKDF",
         ));
     }
 
@@ -420,7 +480,10 @@ pub fn validate_handshake_message(msg: &[u8], expected_type: u8) -> VefasResult<
     let (msg_type, _length) = validate_handshake_header(msg)?;
 
     if msg_type != expected_type {
-        return Err(VefasError::invalid_input("handshake", "Unexpected handshake message type"));
+        return Err(VefasError::invalid_input(
+            "handshake",
+            "Unexpected handshake message type",
+        ));
     }
 
     // Return the handshake body (skip 4-byte header)
@@ -528,9 +591,18 @@ mod tests {
 
     #[test]
     fn cipher_suite_from_id_valid() {
-        assert_eq!(cipher_suite_from_id(0x1301), Some(CipherSuite::Aes128GcmSha256));
-        assert_eq!(cipher_suite_from_id(0x1302), Some(CipherSuite::Aes256GcmSha384));
-        assert_eq!(cipher_suite_from_id(0x1303), Some(CipherSuite::ChaCha20Poly1305Sha256));
+        assert_eq!(
+            cipher_suite_from_id(0x1301),
+            Some(CipherSuite::Aes128GcmSha256)
+        );
+        assert_eq!(
+            cipher_suite_from_id(0x1302),
+            Some(CipherSuite::Aes256GcmSha384)
+        );
+        assert_eq!(
+            cipher_suite_from_id(0x1303),
+            Some(CipherSuite::ChaCha20Poly1305Sha256)
+        );
     }
 
     #[test]

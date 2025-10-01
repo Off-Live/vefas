@@ -3,11 +3,11 @@
 //! This module provides production-grade implementations of key exchange algorithms
 //! including X25519 and P-256 ECDH for TLS 1.3 and other protocols.
 
-use x25519_dalek::{StaticSecret, PublicKey as X25519PublicKey};
-use p256::{SecretKey, PublicKey as P256PublicKey};
-use p256::elliptic_curve::sec1::{ToEncodedPoint, FromEncodedPoint};
+use p256::elliptic_curve::sec1::{FromEncodedPoint, ToEncodedPoint};
+use p256::{PublicKey as P256PublicKey, SecretKey};
 use rand_core::OsRng;
-use vefas_types::{VefasResult, VefasError, errors::CryptoErrorType};
+use vefas_types::{errors::CryptoErrorType, VefasError, VefasResult};
+use x25519_dalek::{PublicKey as X25519PublicKey, StaticSecret};
 
 /// Generate X25519 key pair
 ///
@@ -146,30 +146,31 @@ pub fn p256_compute_shared_secret(
     }
 
     // Parse private key
-    let secret_key = SecretKey::from_slice(private_key)
-        .map_err(|_| VefasError::crypto_error(
+    let secret_key = SecretKey::from_slice(private_key).map_err(|_| {
+        VefasError::crypto_error(
             CryptoErrorType::InvalidKeyLength,
             "invalid P-256 private key",
-        ))?;
+        )
+    })?;
 
     // Parse public key
-    let encoded_point = p256::EncodedPoint::from_bytes(public_key)
-        .map_err(|_| VefasError::crypto_error(
+    let encoded_point = p256::EncodedPoint::from_bytes(public_key).map_err(|_| {
+        VefasError::crypto_error(
             CryptoErrorType::InvalidEcPoint,
             "invalid P-256 public key encoding",
-        ))?;
+        )
+    })?;
 
     let public_key = P256PublicKey::from_encoded_point(&encoded_point)
-        .into_option().unwrap_or_else(|| {
+        .into_option()
+        .unwrap_or_else(|| {
             // This should not happen if the encoded point is valid
             panic!("Failed to decode valid P-256 public key")
         });
 
     // Compute shared secret using ECDH
-    let shared_secret = p256::ecdh::diffie_hellman(
-        secret_key.to_nonzero_scalar(),
-        public_key.as_affine(),
-    );
+    let shared_secret =
+        p256::ecdh::diffie_hellman(secret_key.to_nonzero_scalar(), public_key.as_affine());
 
     // Extract x-coordinate as shared secret
     let x_coordinate = shared_secret.raw_secret_bytes();

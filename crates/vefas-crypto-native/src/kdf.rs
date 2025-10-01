@@ -4,11 +4,11 @@
 //! including HKDF (RFC 5869) and TLS 1.3 key derivation (RFC 8446).
 
 #[cfg(not(feature = "std"))]
-use std::{vec::Vec, vec};
+use std::{vec, vec::Vec};
 
 use hkdf::Hkdf;
 use sha2::Sha256;
-use vefas_types::{VefasResult, VefasError, errors::CryptoErrorType};
+use vefas_types::{errors::CryptoErrorType, VefasError, VefasResult};
 
 /// HKDF-Extract: extract a pseudorandom key from input keying material
 ///
@@ -60,18 +60,13 @@ pub fn hkdf_expand(prk: &[u8; 32], info: &[u8], length: usize) -> VefasResult<Ve
         ));
     }
 
-    let hk = Hkdf::<Sha256>::from_prk(prk)
-        .map_err(|_| VefasError::crypto_error(
-            CryptoErrorType::InvalidKeyLength,
-            "invalid HKDF PRK",
-        ))?;
+    let hk = Hkdf::<Sha256>::from_prk(prk).map_err(|_| {
+        VefasError::crypto_error(CryptoErrorType::InvalidKeyLength, "invalid HKDF PRK")
+    })?;
 
     let mut okm = vec![0u8; length];
     hk.expand(info, &mut okm)
-        .map_err(|_| VefasError::crypto_error(
-            CryptoErrorType::HkdfFailed,
-            "HKDF expand failed",
-        ))?;
+        .map_err(|_| VefasError::crypto_error(CryptoErrorType::HkdfFailed, "HKDF expand failed"))?;
 
     Ok(okm)
 }
@@ -163,20 +158,10 @@ pub fn derive_handshake_secrets(
     let handshake_secret = hkdf_extract(&derived_array, shared_secret);
 
     // Client handshake traffic secret
-    let client_secret = hkdf_expand_label(
-        &handshake_secret,
-        b"c hs traffic",
-        handshake_hash,
-        32,
-    )?;
+    let client_secret = hkdf_expand_label(&handshake_secret, b"c hs traffic", handshake_hash, 32)?;
 
     // Server handshake traffic secret
-    let server_secret = hkdf_expand_label(
-        &handshake_secret,
-        b"s hs traffic",
-        handshake_hash,
-        32,
-    )?;
+    let server_secret = hkdf_expand_label(&handshake_secret, b"s hs traffic", handshake_hash, 32)?;
 
     let mut client_array = [0u8; 32];
     let mut server_array = [0u8; 32];
@@ -224,20 +209,10 @@ pub fn derive_application_secrets(
     let master_secret = hkdf_extract(&derived_array, &[]);
 
     // Client application traffic secret
-    let client_secret = hkdf_expand_label(
-        &master_secret,
-        b"c ap traffic",
-        handshake_hash,
-        32,
-    )?;
+    let client_secret = hkdf_expand_label(&master_secret, b"c ap traffic", handshake_hash, 32)?;
 
     // Server application traffic secret
-    let server_secret = hkdf_expand_label(
-        &master_secret,
-        b"s ap traffic",
-        handshake_hash,
-        32,
-    )?;
+    let server_secret = hkdf_expand_label(&master_secret, b"s ap traffic", handshake_hash, 32)?;
 
     let mut client_array = [0u8; 32];
     let mut server_array = [0u8; 32];
@@ -369,7 +344,8 @@ mod tests {
         let shared_secret = [1u8; 32];
         let handshake_hash = [2u8; 32];
 
-        let (client_secret, server_secret) = derive_handshake_secrets(&shared_secret, &handshake_hash).unwrap();
+        let (client_secret, server_secret) =
+            derive_handshake_secrets(&shared_secret, &handshake_hash).unwrap();
 
         assert_eq!(client_secret.len(), 32);
         assert_eq!(server_secret.len(), 32);
@@ -377,7 +353,8 @@ mod tests {
 
         // Different shared secret should produce different results
         let shared_secret2 = [3u8; 32];
-        let (client_secret2, server_secret2) = derive_handshake_secrets(&shared_secret2, &handshake_hash).unwrap();
+        let (client_secret2, server_secret2) =
+            derive_handshake_secrets(&shared_secret2, &handshake_hash).unwrap();
         assert_ne!(client_secret, client_secret2);
         assert_ne!(server_secret, server_secret2);
     }
@@ -387,7 +364,8 @@ mod tests {
         let handshake_secret = [1u8; 32];
         let handshake_hash = [2u8; 32];
 
-        let (client_secret, server_secret) = derive_application_secrets(&handshake_secret, &handshake_hash).unwrap();
+        let (client_secret, server_secret) =
+            derive_application_secrets(&handshake_secret, &handshake_hash).unwrap();
 
         assert_eq!(client_secret.len(), 32);
         assert_eq!(server_secret.len(), 32);
@@ -395,7 +373,8 @@ mod tests {
 
         // Different handshake secret should produce different results
         let handshake_secret2 = [3u8; 32];
-        let (client_secret2, server_secret2) = derive_application_secrets(&handshake_secret2, &handshake_hash).unwrap();
+        let (client_secret2, server_secret2) =
+            derive_application_secrets(&handshake_secret2, &handshake_hash).unwrap();
         assert_ne!(client_secret, client_secret2);
         assert_ne!(server_secret, server_secret2);
     }
@@ -422,10 +401,12 @@ mod tests {
         let handshake_hash = [2u8; 32];
 
         // Derive handshake secrets
-        let (client_hs_secret, server_hs_secret) = derive_handshake_secrets(&shared_secret, &handshake_hash).unwrap();
+        let (client_hs_secret, server_hs_secret) =
+            derive_handshake_secrets(&shared_secret, &handshake_hash).unwrap();
 
         // Derive application secrets
-        let (client_app_secret, server_app_secret) = derive_application_secrets(&client_hs_secret, &handshake_hash).unwrap();
+        let (client_app_secret, server_app_secret) =
+            derive_application_secrets(&client_hs_secret, &handshake_hash).unwrap();
 
         // Derive traffic keys
         let (client_key, client_iv) = derive_traffic_keys(&client_app_secret).unwrap();

@@ -5,11 +5,13 @@
 //! include comprehensive validation to ensure secure operation in
 //! zero-knowledge contexts.
 
+use alloc::{
+    format,
+    string::{String, ToString},
+    vec::Vec,
+};
 
-
-use alloc::{vec::Vec, string::{String, ToString}, format};
-
-use vefas_types::{VefasResult, VefasError};
+use vefas_types::{VefasError, VefasResult};
 
 /// Parsed HTTP request data
 #[derive(Debug, Clone, PartialEq)]
@@ -70,7 +72,10 @@ pub fn parse_http_request(data: &[u8]) -> VefasResult<HttpRequest> {
     let request_line = lines[0];
     let request_parts: Vec<&str> = request_line.split_whitespace().collect();
     if request_parts.len() < 3 {
-        return Err(VefasError::invalid_input("http_request", "Invalid request line format"));
+        return Err(VefasError::invalid_input(
+            "http_request",
+            "Invalid request line format",
+        ));
     }
 
     let method = validate_http_method(request_parts[0])?;
@@ -124,7 +129,10 @@ pub fn parse_http_response(data: &[u8]) -> VefasResult<HttpResponse> {
     let status_line = lines[0];
     let status_parts: Vec<&str> = status_line.split_whitespace().collect();
     if status_parts.len() < 2 {
-        return Err(VefasError::invalid_input("http_response", "Invalid status line format"));
+        return Err(VefasError::invalid_input(
+            "http_response",
+            "Invalid status line format",
+        ));
     }
 
     let version = validate_http_version(status_parts[0])?;
@@ -172,7 +180,10 @@ pub fn parse_http_response(data: &[u8]) -> VefasResult<HttpResponse> {
 pub fn validate_http_method(method: &str) -> VefasResult<String> {
     // Reject empty methods
     if method.is_empty() {
-        return Err(VefasError::invalid_input("http_request", "HTTP method cannot be empty"));
+        return Err(VefasError::invalid_input(
+            "http_request",
+            "HTTP method cannot be empty",
+        ));
     }
 
     // Common HTTP methods
@@ -182,10 +193,16 @@ pub fn validate_http_method(method: &str) -> VefasResult<String> {
         }
         _ => {
             // Allow custom methods but validate they contain only valid characters
-            if method.chars().all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '-' || c == '_') {
+            if method
+                .chars()
+                .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '-' || c == '_')
+            {
                 Ok(method.to_string())
             } else {
-                Err(VefasError::invalid_input("http_request", "Invalid HTTP method"))
+                Err(VefasError::invalid_input(
+                    "http_request",
+                    "Invalid HTTP method",
+                ))
             }
         }
     }
@@ -198,20 +215,42 @@ pub fn validate_http_path(path: &str) -> VefasResult<String> {
     }
 
     if !path.starts_with('/') {
-        return Err(VefasError::invalid_input("http_request", "HTTP path must start with '/'"));
+        return Err(VefasError::invalid_input(
+            "http_request",
+            "HTTP path must start with '/'",
+        ));
     }
 
     // Validate path contains only valid URI characters
     if path.chars().all(|c| {
-        c.is_ascii_alphanumeric() ||
-        c == '/' || c == '?' || c == '&' || c == '=' || c == '-' || c == '_' ||
-        c == '.' || c == '~' || c == ':' || c == '@' || c == '!' || c == '$' ||
-        c == '\'' || c == '(' || c == ')' || c == '*' || c == '+' || c == ',' ||
-        c == ';' || c == '%'
+        c.is_ascii_alphanumeric()
+            || c == '/'
+            || c == '?'
+            || c == '&'
+            || c == '='
+            || c == '-'
+            || c == '_'
+            || c == '.'
+            || c == '~'
+            || c == ':'
+            || c == '@'
+            || c == '!'
+            || c == '$'
+            || c == '\''
+            || c == '('
+            || c == ')'
+            || c == '*'
+            || c == '+'
+            || c == ','
+            || c == ';'
+            || c == '%'
     }) {
         Ok(path.to_string())
     } else {
-        Err(VefasError::invalid_input("http_request", "Invalid characters in HTTP path"))
+        Err(VefasError::invalid_input(
+            "http_request",
+            "Invalid characters in HTTP path",
+        ))
     }
 }
 
@@ -219,18 +258,25 @@ pub fn validate_http_path(path: &str) -> VefasResult<String> {
 fn validate_http_version(version: &str) -> VefasResult<String> {
     match version {
         "HTTP/1.0" | "HTTP/1.1" | "HTTP/2" | "HTTP/3" => Ok(version.to_string()),
-        _ => Err(VefasError::invalid_input("http", "Unsupported HTTP version"))
+        _ => Err(VefasError::invalid_input(
+            "http",
+            "Unsupported HTTP version",
+        )),
     }
 }
 
 /// Parse HTTP status code
 fn parse_status_code(status_str: &str) -> VefasResult<u16> {
-    let status_code = status_str.parse::<u16>()
+    let status_code = status_str
+        .parse::<u16>()
         .map_err(|_| VefasError::invalid_input("http_response", "Invalid status code format"))?;
 
     // Validate status code range
     if !(100..=599).contains(&status_code) {
-        return Err(VefasError::invalid_input("http_response", "Status code out of valid range (100-599)"));
+        return Err(VefasError::invalid_input(
+            "http_response",
+            "Status code out of valid range (100-599)",
+        ));
     }
 
     Ok(status_code)
@@ -243,17 +289,29 @@ fn parse_http_header(line: &str) -> VefasResult<(String, String)> {
         let value = line[colon_pos + 1..].trim();
 
         if name.is_empty() {
-            return Err(VefasError::invalid_input("http_header", "Empty header name"));
+            return Err(VefasError::invalid_input(
+                "http_header",
+                "Empty header name",
+            ));
         }
 
         // Validate header name contains only valid characters
-        if name.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_') {
+        if name
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+        {
             Ok((name.to_string(), value.to_string()))
         } else {
-            Err(VefasError::invalid_input("http_header", "Invalid characters in header name"))
+            Err(VefasError::invalid_input(
+                "http_header",
+                "Invalid characters in header name",
+            ))
         }
     } else {
-        Err(VefasError::invalid_input("http_header", "Invalid header format (missing colon)"))
+        Err(VefasError::invalid_input(
+            "http_header",
+            "Invalid header format (missing colon)",
+        ))
     }
 }
 
@@ -271,13 +329,18 @@ pub fn get_header_value<'a>(headers: &'a [(String, String)], name: &str) -> Opti
 /// Validate Content-Length header matches body size
 pub fn validate_content_length(headers: &[(String, String)], body: &[u8]) -> VefasResult<()> {
     if let Some(content_length_str) = get_header_value(headers, "content-length") {
-        let declared_length = content_length_str.parse::<usize>()
-            .map_err(|_| VefasError::invalid_input("http_header", "Invalid Content-Length value"))?;
+        let declared_length = content_length_str.parse::<usize>().map_err(|_| {
+            VefasError::invalid_input("http_header", "Invalid Content-Length value")
+        })?;
 
         if declared_length != body.len() {
             return Err(VefasError::invalid_input(
                 "http_body",
-                &format!("Content-Length mismatch: declared {}, actual {}", declared_length, body.len())
+                &format!(
+                    "Content-Length mismatch: declared {}, actual {}",
+                    declared_length,
+                    body.len()
+                ),
             ));
         }
     }
@@ -290,23 +353,33 @@ pub fn extract_host(headers: &[(String, String)]) -> VefasResult<String> {
     if let Some(host) = get_header_value(headers, "host") {
         validate_host_header(host).map(|h| h.to_string())
     } else {
-        Err(VefasError::invalid_input("http_header", "Missing required Host header"))
+        Err(VefasError::invalid_input(
+            "http_header",
+            "Missing required Host header",
+        ))
     }
 }
 
 /// Validate host header format
 fn validate_host_header(host: &str) -> VefasResult<&str> {
     if host.is_empty() {
-        return Err(VefasError::invalid_input("http_header", "Empty Host header"));
+        return Err(VefasError::invalid_input(
+            "http_header",
+            "Empty Host header",
+        ));
     }
 
     // Basic validation - host should contain only valid hostname characters
-    if host.chars().all(|c| {
-        c.is_ascii_alphanumeric() || c == '.' || c == '-' || c == ':' || c == '_'
-    }) {
+    if host
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '-' || c == ':' || c == '_')
+    {
         Ok(host)
     } else {
-        Err(VefasError::invalid_input("http_header", "Invalid characters in Host header"))
+        Err(VefasError::invalid_input(
+            "http_header",
+            "Invalid characters in Host header",
+        ))
     }
 }
 
@@ -326,8 +399,8 @@ pub fn normalize_http_data(data: &[u8]) -> Vec<u8> {
     // Convert to string, normalize line endings, remove trailing whitespace
     if let Ok(text) = core::str::from_utf8(data) {
         let normalized = text
-            .replace("\r\n", "\n")  // Normalize CRLF to LF
-            .replace('\r', "\n")    // Normalize standalone CR to LF
+            .replace("\r\n", "\n") // Normalize CRLF to LF
+            .replace('\r', "\n") // Normalize standalone CR to LF
             .lines()
             .map(|line| line.trim_end()) // Remove trailing whitespace from each line
             .collect::<Vec<_>>()
@@ -347,7 +420,8 @@ mod tests {
 
     #[test]
     fn parse_http_request_valid() {
-        let request_data = b"GET /api/test HTTP/1.1\r\nHost: example.com\r\nUser-Agent: test\r\n\r\ntest body";
+        let request_data =
+            b"GET /api/test HTTP/1.1\r\nHost: example.com\r\nUser-Agent: test\r\n\r\ntest body";
         let request = parse_http_request(request_data).unwrap();
 
         assert_eq!(request.method, "GET");
@@ -394,7 +468,10 @@ mod tests {
     fn validate_http_method_valid() {
         assert_eq!(validate_http_method("GET").unwrap(), "GET");
         assert_eq!(validate_http_method("post").unwrap(), "POST");
-        assert_eq!(validate_http_method("CUSTOM-METHOD").unwrap(), "CUSTOM-METHOD");
+        assert_eq!(
+            validate_http_method("CUSTOM-METHOD").unwrap(),
+            "CUSTOM-METHOD"
+        );
     }
 
     #[test]
@@ -407,7 +484,10 @@ mod tests {
     fn validate_http_path_valid() {
         assert_eq!(validate_http_path("/").unwrap(), "/");
         assert_eq!(validate_http_path("/api/test").unwrap(), "/api/test");
-        assert_eq!(validate_http_path("/api/test?param=value").unwrap(), "/api/test?param=value");
+        assert_eq!(
+            validate_http_path("/api/test?param=value").unwrap(),
+            "/api/test?param=value"
+        );
     }
 
     #[test]
@@ -451,7 +531,10 @@ mod tests {
             ("Host".to_string(), "example.com".to_string()),
         ];
 
-        assert_eq!(get_header_value(&headers, "content-type"), Some("application/json"));
+        assert_eq!(
+            get_header_value(&headers, "content-type"),
+            Some("application/json")
+        );
         assert_eq!(get_header_value(&headers, "HOST"), Some("example.com"));
         assert_eq!(get_header_value(&headers, "missing"), None);
     }
@@ -490,7 +573,8 @@ mod tests {
     #[test]
     fn parse_http_data_integration() {
         let request = b"GET /api/test HTTP/1.1\r\nHost: example.com\r\n\r\n";
-        let response = b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{\"result\":\"ok\"}";
+        let response =
+            b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{\"result\":\"ok\"}";
 
         let http_data = HttpData::new(request.to_vec(), response.to_vec());
         let (method, path, status_code) = parse_http_data(&http_data).unwrap();

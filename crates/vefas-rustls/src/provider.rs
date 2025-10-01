@@ -1,13 +1,13 @@
-use std::sync::Arc;
-use rustls::crypto::{ActiveKeyExchange, CryptoProvider, SupportedKxGroup, SharedSecret};
-use rustls::NamedGroup;
-use rustls::crypto::aws_lc_rs::default_provider;
-use x25519_dalek::{x25519, X25519_BASEPOINT_BYTES};
 use rand::rngs::ThreadRng;
 use rand::RngCore;
+use rustls::crypto::aws_lc_rs::default_provider;
+use rustls::crypto::{ActiveKeyExchange, CryptoProvider, SharedSecret, SupportedKxGroup};
+use rustls::NamedGroup;
+use std::sync::Arc;
+use x25519_dalek::{x25519, X25519_BASEPOINT_BYTES};
 use zeroize::Zeroize;
 
-use crate::{ProviderConfig, EphemeralCaptureHandle, EphemeralSeed};
+use crate::{EphemeralCaptureHandle, EphemeralSeed, ProviderConfig};
 
 #[derive(Debug)]
 struct CapturingX25519Group {
@@ -18,7 +18,11 @@ struct CapturingX25519Group {
 
 impl CapturingX25519Group {
     fn new(capture: EphemeralCaptureHandle, seed: Option<EphemeralSeed>) -> Self {
-        Self { _label: "X25519", capture, seed }
+        Self {
+            _label: "X25519",
+            capture,
+            seed,
+        }
     }
 }
 
@@ -44,13 +48,19 @@ impl ActiveKeyExchange for CapturingX25519Kx {
         Ok(SharedSecret::from(shared.to_vec()))
     }
 
-    fn pub_key(&self) -> &[u8] { &self.pubkey }
+    fn pub_key(&self) -> &[u8] {
+        &self.pubkey
+    }
 
-    fn group(&self) -> NamedGroup { NamedGroup::X25519 }
+    fn group(&self) -> NamedGroup {
+        NamedGroup::X25519
+    }
 }
 
 impl SupportedKxGroup for CapturingX25519Group {
-    fn name(&self) -> NamedGroup { NamedGroup::X25519 }
+    fn name(&self) -> NamedGroup {
+        NamedGroup::X25519
+    }
 
     fn start(&self) -> Result<Box<dyn ActiveKeyExchange>, rustls::Error> {
         let mut secret: [u8; 32] = if let Some(EphemeralSeed(seed)) = self.seed {
@@ -74,15 +84,15 @@ impl SupportedKxGroup for CapturingX25519Group {
         }
 
         let pubkey = x25519(secret, X25519_BASEPOINT_BYTES);
-        let kx = CapturingX25519Kx {
-            secret,
-            pubkey,
-        };
+        let kx = CapturingX25519Kx { secret, pubkey };
         Ok(Box::new(kx))
     }
 }
 
-pub fn build_capturing_provider(config: ProviderConfig, capture: EphemeralCaptureHandle) -> CryptoProvider {
+pub fn build_capturing_provider(
+    config: ProviderConfig,
+    capture: EphemeralCaptureHandle,
+) -> CryptoProvider {
     // Start from aws-lc-rs defaults
     let mut provider = default_provider();
 
@@ -91,12 +101,11 @@ pub fn build_capturing_provider(config: ProviderConfig, capture: EphemeralCaptur
     let capturing_ref: &'static dyn SupportedKxGroup = Box::leak(capturing);
 
     // Build a new list of kx groups with our capturing X25519 first
-    let mut groups: Vec<&'static dyn SupportedKxGroup> = Vec::with_capacity(provider.kx_groups.len() + 1);
+    let mut groups: Vec<&'static dyn SupportedKxGroup> =
+        Vec::with_capacity(provider.kx_groups.len() + 1);
     groups.push(capturing_ref);
     groups.extend_from_slice(&provider.kx_groups);
     provider.kx_groups = groups;
 
     provider
 }
-
-

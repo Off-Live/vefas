@@ -6,23 +6,33 @@
 #[cfg(not(feature = "std"))]
 use std::vec::Vec;
 
-use p256::{SecretKey as P256SecretKey, PublicKey as P256PublicKey};
-use p256::ecdsa::{SigningKey as P256SigningKey, VerifyingKey as P256VerifyingKey, Signature as P256Signature};
-use p256::elliptic_curve::sec1::{ToEncodedPoint, FromEncodedPoint};
-use ecdsa::signature::{Verifier, SignatureEncoding};
+use ecdsa::signature::{SignatureEncoding, Verifier};
+use p256::ecdsa::{
+    Signature as P256Signature, SigningKey as P256SigningKey, VerifyingKey as P256VerifyingKey,
+};
+use p256::elliptic_curve::sec1::{FromEncodedPoint, ToEncodedPoint};
+use p256::{PublicKey as P256PublicKey, SecretKey as P256SecretKey};
 
-use k256::{SecretKey as K256SecretKey, PublicKey as K256PublicKey};
-use k256::ecdsa::{SigningKey as K256SigningKey, VerifyingKey as K256VerifyingKey, Signature as K256Signature};
+use k256::ecdsa::{
+    Signature as K256Signature, SigningKey as K256SigningKey, VerifyingKey as K256VerifyingKey,
+};
+use k256::{PublicKey as K256PublicKey, SecretKey as K256SecretKey};
 
-use ed25519_dalek::{SigningKey as Ed25519SigningKey, VerifyingKey as Ed25519VerifyingKey, Signature as Ed25519Signature, Signer};
+use ed25519_dalek::{
+    Signature as Ed25519Signature, Signer, SigningKey as Ed25519SigningKey,
+    VerifyingKey as Ed25519VerifyingKey,
+};
 
-use rsa::{RsaPrivateKey, RsaPublicKey};
-use rsa::pkcs1::{EncodeRsaPrivateKey, EncodeRsaPublicKey, DecodeRsaPrivateKey, DecodeRsaPublicKey};
+use rsa::pkcs1::{
+    DecodeRsaPrivateKey, DecodeRsaPublicKey, EncodeRsaPrivateKey, EncodeRsaPublicKey,
+};
+use rsa::pkcs1v15::{SigningKey, VerifyingKey};
 use rsa::signature::RandomizedSigner;
+use rsa::{RsaPrivateKey, RsaPublicKey};
 
-use sha2::Sha256;
 use rand_core::{OsRng, RngCore};
-use vefas_types::{VefasResult, VefasError, errors::CryptoErrorType};
+use sha2::Sha256;
+use vefas_types::{errors::CryptoErrorType, VefasError, VefasResult};
 
 /// Generate P-256 ECDSA key pair
 ///
@@ -69,11 +79,12 @@ pub fn p256_generate_keypair() -> VefasResult<([u8; 32], [u8; 65])> {
 /// # Errors
 /// Returns error if signing fails or private key is invalid
 pub fn p256_sign(private_key: &[u8; 32], message: &[u8]) -> VefasResult<Vec<u8>> {
-    let secret_key = P256SecretKey::from_slice(private_key)
-        .map_err(|_| VefasError::crypto_error(
+    let secret_key = P256SecretKey::from_slice(private_key).map_err(|_| {
+        VefasError::crypto_error(
             CryptoErrorType::InvalidKeyLength,
             "invalid P-256 private key",
-        ))?;
+        )
+    })?;
 
     let signing_key = P256SigningKey::from(secret_key);
     let signature: P256Signature = signing_key.sign(message);
@@ -162,11 +173,12 @@ pub fn secp256k1_generate_keypair() -> VefasResult<([u8; 32], [u8; 65])> {
 /// # Errors
 /// Returns error if signing fails or private key is invalid
 pub fn secp256k1_sign(private_key: &[u8; 32], message: &[u8]) -> VefasResult<Vec<u8>> {
-    let secret_key = K256SecretKey::from_slice(private_key)
-        .map_err(|_| VefasError::crypto_error(
+    let secret_key = K256SecretKey::from_slice(private_key).map_err(|_| {
+        VefasError::crypto_error(
             CryptoErrorType::InvalidKeyLength,
             "invalid secp256k1 private key",
-        ))?;
+        )
+    })?;
 
     let signing_key = K256SigningKey::from(secret_key);
     let signature: K256Signature = signing_key.sign(message);
@@ -269,27 +281,33 @@ pub fn ed25519_verify(public_key: &[u8; 32], message: &[u8], signature: &[u8; 64
 /// # Errors
 /// Returns error if key generation fails
 pub fn rsa_2048_generate_keypair() -> VefasResult<(Vec<u8>, Vec<u8>)> {
-    let private_key = RsaPrivateKey::new(&mut OsRng, 2048)
-        .map_err(|_| VefasError::crypto_error(
+    let private_key = RsaPrivateKey::new(&mut OsRng, 2048).map_err(|_| {
+        VefasError::crypto_error(
             CryptoErrorType::KeyDerivationFailed,
             "RSA key generation failed",
-        ))?;
+        )
+    })?;
 
     let public_key = RsaPublicKey::from(&private_key);
 
-    let private_der = private_key.to_pkcs1_der()
-        .map_err(|_| VefasError::crypto_error(
+    let private_der = private_key.to_pkcs1_der().map_err(|_| {
+        VefasError::crypto_error(
             CryptoErrorType::KeyDerivationFailed,
             "RSA private key DER encoding failed",
-        ))?;
+        )
+    })?;
 
-    let public_der = public_key.to_pkcs1_der()
-        .map_err(|_| VefasError::crypto_error(
+    let public_der = public_key.to_pkcs1_der().map_err(|_| {
+        VefasError::crypto_error(
             CryptoErrorType::KeyDerivationFailed,
             "RSA public key DER encoding failed",
-        ))?;
+        )
+    })?;
 
-    Ok((private_der.as_bytes().to_vec(), public_der.as_bytes().to_vec()))
+    Ok((
+        private_der.as_bytes().to_vec(),
+        public_der.as_bytes().to_vec(),
+    ))
 }
 
 /// Sign message with RSA PKCS#1 v1.5 SHA-256
@@ -304,13 +322,15 @@ pub fn rsa_2048_generate_keypair() -> VefasResult<(Vec<u8>, Vec<u8>)> {
 /// # Errors
 /// Returns error if signing fails or private key is invalid
 pub fn rsa_pkcs1_sha256_sign(private_key_der: &[u8], message: &[u8]) -> VefasResult<Vec<u8>> {
-    let private_key = RsaPrivateKey::from_pkcs1_der(private_key_der)
-        .map_err(|_| VefasError::crypto_error(
+    let private_key = RsaPrivateKey::from_pkcs1_der(private_key_der).map_err(|_| {
+        VefasError::crypto_error(
             CryptoErrorType::KeyDerivationFailed,
             "invalid RSA private key DER",
-        ))?;
+        )
+    })?;
 
-    let signing_key = rsa::pkcs1v15::SigningKey::<Sha256>::new_unprefixed(private_key);
+    // Use the RSA crate's SigningKey with SHA-256
+    let signing_key = SigningKey::<Sha256>::new(private_key);
 
     let signature = signing_key.sign_with_rng(&mut OsRng, message);
     Ok(signature.to_vec())
@@ -331,7 +351,8 @@ pub fn rsa_pkcs1_sha256_verify(public_key_der: &[u8], message: &[u8], signature:
         Err(_) => return false,
     };
 
-    let verifying_key = rsa::pkcs1v15::VerifyingKey::<Sha256>::new_unprefixed(public_key);
+    // Use the RSA crate's VerifyingKey with SHA-256
+    let verifying_key = VerifyingKey::<Sha256>::new(public_key);
 
     match rsa::pkcs1v15::Signature::try_from(signature) {
         Ok(sig) => verifying_key.verify(message, &sig).is_ok(),
@@ -351,11 +372,12 @@ pub fn rsa_pkcs1_sha256_verify(public_key_der: &[u8], message: &[u8], signature:
 /// # Errors
 /// Returns error if signing fails or private key is invalid
 pub fn rsa_pss_sha256_sign(private_key_der: &[u8], message: &[u8]) -> VefasResult<Vec<u8>> {
-    let private_key = RsaPrivateKey::from_pkcs1_der(private_key_der)
-        .map_err(|_| VefasError::crypto_error(
+    let private_key = RsaPrivateKey::from_pkcs1_der(private_key_der).map_err(|_| {
+        VefasError::crypto_error(
             CryptoErrorType::KeyDerivationFailed,
             "invalid RSA private key DER",
-        ))?;
+        )
+    })?;
 
     let signing_key = rsa::pss::SigningKey::<Sha256>::new(private_key);
 
@@ -440,7 +462,11 @@ mod tests {
         let signature = rsa_pkcs1_sha256_sign(&private_der, message).unwrap();
 
         assert!(rsa_pkcs1_sha256_verify(&public_der, message, &signature));
-        assert!(!rsa_pkcs1_sha256_verify(&public_der, b"different message", &signature));
+        assert!(!rsa_pkcs1_sha256_verify(
+            &public_der,
+            b"different message",
+            &signature
+        ));
     }
 
     #[test]
@@ -451,7 +477,11 @@ mod tests {
         let signature = rsa_pss_sha256_sign(&private_der, message).unwrap();
 
         assert!(rsa_pss_sha256_verify(&public_der, message, &signature));
-        assert!(!rsa_pss_sha256_verify(&public_der, b"different message", &signature));
+        assert!(!rsa_pss_sha256_verify(
+            &public_der,
+            b"different message",
+            &signature
+        ));
     }
 
     #[test]

@@ -159,7 +159,7 @@ pub enum CryptoErrorType {
     /// HKDF operation failed
     HkdfFailed,
     /// Unsupported TLS Algorithm
-    UnsupportedAlgorithm
+    UnsupportedAlgorithm,
 }
 
 /// Certificate-specific error types
@@ -318,16 +318,28 @@ impl fmt::Display for VefasError {
             VefasError::InvalidInput { field, reason } => {
                 write!(f, "Invalid input in field '{}': {}", field, reason)
             }
-            VefasError::TlsError { error_type, message } => {
+            VefasError::TlsError {
+                error_type,
+                message,
+            } => {
                 write!(f, "TLS error ({:?}): {}", error_type, message)
             }
-            VefasError::HttpError { error_type, message } => {
+            VefasError::HttpError {
+                error_type,
+                message,
+            } => {
                 write!(f, "HTTP error ({:?}): {}", error_type, message)
             }
-            VefasError::CryptoError { error_type, message } => {
+            VefasError::CryptoError {
+                error_type,
+                message,
+            } => {
                 write!(f, "Crypto error ({:?}): {}", error_type, message)
             }
-            VefasError::CertificateError { error_type, message } => {
+            VefasError::CertificateError {
+                error_type,
+                message,
+            } => {
                 write!(f, "Certificate error ({:?}): {}", error_type, message)
             }
             VefasError::SerializationError { message } => {
@@ -336,7 +348,11 @@ impl fmt::Display for VefasError {
             VefasError::ZkvmError { platform, message } => {
                 write!(f, "zkVM error ({}): {}", platform, message)
             }
-            VefasError::MemoryError { requested, limit, context } => {
+            VefasError::MemoryError {
+                requested,
+                limit,
+                context,
+            } => {
                 write!(
                     f,
                     "Memory error in {}: requested {} bytes, limit {} bytes",
@@ -344,11 +360,7 @@ impl fmt::Display for VefasError {
                 )
             }
             VefasError::VersionMismatch { expected, actual } => {
-                write!(
-                    f,
-                    "Version mismatch: expected {}, got {}",
-                    expected, actual
-                )
+                write!(f, "Version mismatch: expected {}, got {}", expected, actual)
             }
             VefasError::Internal { message } => {
                 write!(f, "Internal error: {}", message)
@@ -374,15 +386,13 @@ mod tests {
 
     #[test]
     fn test_recoverable_errors() {
-        let recoverable = VefasError::tls_error(
-            TlsErrorType::UnsupportedVersion,
-            "TLS 1.2 not supported"
-        );
+        let recoverable =
+            VefasError::tls_error(TlsErrorType::UnsupportedVersion, "TLS 1.2 not supported");
         assert!(recoverable.is_recoverable());
 
         let non_recoverable = VefasError::crypto_error(
             CryptoErrorType::SignatureVerificationFailed,
-            "Invalid signature"
+            "Invalid signature",
         );
         assert!(!non_recoverable.is_recoverable());
     }

@@ -1,11 +1,10 @@
 //! API request and response types for VEFAS Gateway
 
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use uuid::Uuid;
-use chrono::{DateTime, Utc};
 use vefas_types::{VefasCanonicalBundle, VefasProofClaim};
-
 
 /// HTTP methods supported by the gateway
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -232,8 +231,7 @@ impl ExecuteRequestPayload {
         }
 
         // Parse URL to ensure it's valid
-        url::Url::parse(&self.url)
-            .map_err(|e| format!("Invalid URL format: {}", e))?;
+        url::Url::parse(&self.url).map_err(|e| format!("Invalid URL format: {}", e))?;
 
         // Validate timeout
         if self.timeout_ms < 1000 || self.timeout_ms > 300000 {
@@ -243,11 +241,13 @@ impl ExecuteRequestPayload {
         // Validate body if present
         if let Some(ref body) = self.body {
             use base64::{engine::general_purpose, Engine as _};
-            general_purpose::STANDARD.decode(body)
+            general_purpose::STANDARD
+                .decode(body)
                 .map_err(|_| "Request body must be valid base64".to_string())?;
 
             // Check body size (10MB limit when decoded)
-            if body.len() > 13_631_488 { // base64 overhead ~37%
+            if body.len() > 13_631_488 {
+                // base64 overhead ~37%
                 return Err("Request body too large (max 10MB)".to_string());
             }
         }
@@ -257,7 +257,8 @@ impl ExecuteRequestPayload {
             if key.trim().is_empty() {
                 return Err("Header names cannot be empty".to_string());
             }
-            if value.len() > 8192 { // Reasonable header value limit
+            if value.len() > 8192 {
+                // Reasonable header value limit
                 return Err(format!("Header value too long for '{}' (max 8KB)", key));
             }
         }
@@ -270,7 +271,8 @@ impl ExecuteRequestPayload {
         match &self.body {
             Some(body) => {
                 use base64::{engine::general_purpose, Engine as _};
-                let bytes = general_purpose::STANDARD.decode(body)
+                let bytes = general_purpose::STANDARD
+                    .decode(body)
                     .map_err(|_| "Invalid base64 in request body".to_string())?;
                 Ok(Some(bytes))
             }
@@ -283,7 +285,12 @@ impl ExecuteRequestPayload {
         if self.headers.is_empty() {
             None
         } else {
-            Some(self.headers.iter().map(|(k, v)| (k.clone(), v.clone())).collect())
+            Some(
+                self.headers
+                    .iter()
+                    .map(|(k, v)| (k.clone(), v.clone()))
+                    .collect(),
+            )
         }
     }
 }
@@ -299,7 +306,8 @@ impl VerifyProofPayload {
 
         // Validate proof data is valid base64
         use base64::{engine::general_purpose, Engine as _};
-        general_purpose::STANDARD.decode(&self.proof.proof_data)
+        general_purpose::STANDARD
+            .decode(&self.proof.proof_data)
             .map_err(|_| "Proof data must be valid base64".to_string())?;
 
         // Basic claim validation

@@ -42,17 +42,15 @@ impl TlsVersion {
     }
 }
 
-/// TLS 1.3 cipher suites (RFC 8446)
+/// TLS 1.3 cipher suites (RFC 8446) - Core supported suites
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum CipherSuite {
-    /// TLS_AES_128_GCM_SHA256
+    /// TLS_AES_128_GCM_SHA256 (0x1301)
     Aes128GcmSha256,
-    /// TLS_AES_256_GCM_SHA384
+    /// TLS_AES_256_GCM_SHA384 (0x1302)
     Aes256GcmSha384,
-    /// TLS_CHACHA20_POLY1305_SHA256
+    /// TLS_CHACHA20_POLY1305_SHA256 (0x1303)
     ChaCha20Poly1305Sha256,
-    /// TLS_AES_128_CCM_SHA256
-    Aes128CcmSha256,
 }
 
 impl CipherSuite {
@@ -62,7 +60,6 @@ impl CipherSuite {
             CipherSuite::Aes128GcmSha256 => 0x1301,
             CipherSuite::Aes256GcmSha384 => 0x1302,
             CipherSuite::ChaCha20Poly1305Sha256 => 0x1303,
-            CipherSuite::Aes128CcmSha256 => 0x1304,
         }
     }
 
@@ -72,7 +69,6 @@ impl CipherSuite {
             0x1301 => Ok(CipherSuite::Aes128GcmSha256),
             0x1302 => Ok(CipherSuite::Aes256GcmSha384),
             0x1303 => Ok(CipherSuite::ChaCha20Poly1305Sha256),
-            0x1304 => Ok(CipherSuite::Aes128CcmSha256),
             _ => Err(VefasError::tls_error(
                 crate::errors::TlsErrorType::UnsupportedCipherSuite,
                 &("Unsupported cipher suite: 0x".to_string() + &format_hex(value, 4)),
@@ -86,7 +82,6 @@ impl CipherSuite {
             CipherSuite::Aes128GcmSha256 => "TLS_AES_128_GCM_SHA256",
             CipherSuite::Aes256GcmSha384 => "TLS_AES_256_GCM_SHA384",
             CipherSuite::ChaCha20Poly1305Sha256 => "TLS_CHACHA20_POLY1305_SHA256",
-            CipherSuite::Aes128CcmSha256 => "TLS_AES_128_CCM_SHA256",
         }
     }
 
@@ -96,7 +91,6 @@ impl CipherSuite {
             CipherSuite::Aes128GcmSha256 => HashAlgorithm::Sha256,
             CipherSuite::Aes256GcmSha384 => HashAlgorithm::Sha384,
             CipherSuite::ChaCha20Poly1305Sha256 => HashAlgorithm::Sha256,
-            CipherSuite::Aes128CcmSha256 => HashAlgorithm::Sha256,
         }
     }
 
@@ -106,7 +100,6 @@ impl CipherSuite {
             CipherSuite::Aes128GcmSha256 => AeadAlgorithm::Aes128Gcm,
             CipherSuite::Aes256GcmSha384 => AeadAlgorithm::Aes256Gcm,
             CipherSuite::ChaCha20Poly1305Sha256 => AeadAlgorithm::ChaCha20Poly1305,
-            CipherSuite::Aes128CcmSha256 => AeadAlgorithm::Aes128Ccm,
         }
     }
 
@@ -116,7 +109,6 @@ impl CipherSuite {
             CipherSuite::Aes128GcmSha256 => 16,
             CipherSuite::Aes256GcmSha384 => 32,
             CipherSuite::ChaCha20Poly1305Sha256 => 32,
-            CipherSuite::Aes128CcmSha256 => 16,
         }
     }
 
@@ -126,8 +118,27 @@ impl CipherSuite {
             CipherSuite::Aes128GcmSha256 => 12,
             CipherSuite::Aes256GcmSha384 => 12,
             CipherSuite::ChaCha20Poly1305Sha256 => 12,
-            CipherSuite::Aes128CcmSha256 => 12,
         }
+    }
+
+    /// Check if this cipher suite is deprecated
+    pub fn is_deprecated(&self) -> bool {
+        // None of our core cipher suites are deprecated
+        false
+    }
+
+    /// Get all supported cipher suites
+    pub fn all_supported() -> Vec<Self> {
+        vec![
+            CipherSuite::Aes128GcmSha256,
+            CipherSuite::Aes256GcmSha384,
+            CipherSuite::ChaCha20Poly1305Sha256,
+        ]
+    }
+
+    /// Get all cipher suites (same as supported for core suites)
+    pub fn all() -> Vec<Self> {
+        Self::all_supported()
     }
 }
 
@@ -158,7 +169,7 @@ impl HashAlgorithm {
     }
 }
 
-/// AEAD algorithms used in TLS 1.3
+/// AEAD algorithms used in TLS 1.3 - Core supported algorithms
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum AeadAlgorithm {
     /// AES-128-GCM
@@ -167,8 +178,6 @@ pub enum AeadAlgorithm {
     Aes256Gcm,
     /// ChaCha20-Poly1305
     ChaCha20Poly1305,
-    /// AES-128-CCM
-    Aes128Ccm,
 }
 
 /// Named groups for key exchange (RFC 8446)

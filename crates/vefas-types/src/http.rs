@@ -3,10 +3,10 @@
 //! This module provides comprehensive HTTP/1.1 types designed for deterministic
 //! serialization and verification in zkVM environments.
 
-use alloc::{string::String, vec::Vec, collections::BTreeMap, string::ToString};
-use serde::{Deserialize, Serialize};
-use crate::{VefasError, VefasResult, MAX_HTTP_HEADER_SIZE, MAX_HTTP_BODY_SIZE};
 use crate::utils::format_decimal;
+use crate::{VefasError, VefasResult, MAX_HTTP_BODY_SIZE, MAX_HTTP_HEADER_SIZE};
+use alloc::{collections::BTreeMap, string::String, string::ToString, vec::Vec};
+use serde::{Deserialize, Serialize};
 
 /// HTTP request methods (RFC 7231)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -224,18 +224,24 @@ impl HttpHeaders {
         }
 
         // Calculate size impact
-        let old_value_size = self.headers.get(&name_lower)
-            .map(|v| v.len())
-            .unwrap_or(0);
+        let old_value_size = self.headers.get(&name_lower).map(|v| v.len()).unwrap_or(0);
         let new_value_size = value.len();
-        let name_size = if self.headers.contains_key(&name_lower) { 0 } else { name_lower.len() };
+        let name_size = if self.headers.contains_key(&name_lower) {
+            0
+        } else {
+            name_lower.len()
+        };
 
         let new_total_size = self.total_size - old_value_size + new_value_size + name_size;
 
         if new_total_size > MAX_HTTP_HEADER_SIZE {
             return Err(VefasError::http_error(
                 crate::errors::HttpErrorType::HeaderTooLarge,
-                &("Headers too large: ".to_string() + &format_decimal(new_total_size) + " bytes (max " + &format_decimal(MAX_HTTP_HEADER_SIZE) + ")"),
+                &("Headers too large: ".to_string()
+                    + &format_decimal(new_total_size)
+                    + " bytes (max "
+                    + &format_decimal(MAX_HTTP_HEADER_SIZE)
+                    + ")"),
             ));
         }
 
@@ -324,16 +330,34 @@ impl HttpHeaders {
 
     /// Validate header name according to RFC 7230
     fn is_valid_header_name(name: &str) -> bool {
-        !name.is_empty() && name.chars().all(|c| {
-            c.is_ascii_alphanumeric() || matches!(c, '!' | '#' | '$' | '%' | '&' | '\'' | '*' | '+' | '-' | '.' | '^' | '_' | '`' | '|' | '~')
-        })
+        !name.is_empty()
+            && name.chars().all(|c| {
+                c.is_ascii_alphanumeric()
+                    || matches!(
+                        c,
+                        '!' | '#'
+                            | '$'
+                            | '%'
+                            | '&'
+                            | '\''
+                            | '*'
+                            | '+'
+                            | '-'
+                            | '.'
+                            | '^'
+                            | '_'
+                            | '`'
+                            | '|'
+                            | '~'
+                    )
+            })
     }
 
     /// Validate header value according to RFC 7230
     fn is_valid_header_value(value: &str) -> bool {
-        value.chars().all(|c| {
-            c.is_ascii() && (c.is_ascii_graphic() || c == ' ' || c == '\t')
-        })
+        value
+            .chars()
+            .all(|c| c.is_ascii() && (c.is_ascii_graphic() || c == ' ' || c == '\t'))
     }
 }
 
@@ -371,7 +395,11 @@ impl HttpRequest {
         if body.len() > MAX_HTTP_BODY_SIZE {
             return Err(VefasError::http_error(
                 crate::errors::HttpErrorType::BodyTooLarge,
-                &("Request body too large: ".to_string() + &format_decimal(body.len()) + " bytes (max " + &format_decimal(MAX_HTTP_BODY_SIZE) + ")"),
+                &("Request body too large: ".to_string()
+                    + &format_decimal(body.len())
+                    + " bytes (max "
+                    + &format_decimal(MAX_HTTP_BODY_SIZE)
+                    + ")"),
             ));
         }
 
@@ -456,18 +484,20 @@ impl HttpRequest {
 
     /// Parse request from HTTP wire format
     pub fn parse(input: &[u8]) -> VefasResult<Self> {
-        let input_str = core::str::from_utf8(input)
-            .map_err(|_| VefasError::http_error(
+        let input_str = core::str::from_utf8(input).map_err(|_| {
+            VefasError::http_error(
                 crate::errors::HttpErrorType::InvalidRequest,
                 "Invalid UTF-8 in request",
-            ))?;
+            )
+        })?;
 
         // Find header/body boundary
-        let header_end = input_str.find("\r\n\r\n")
-            .ok_or_else(|| VefasError::http_error(
+        let header_end = input_str.find("\r\n\r\n").ok_or_else(|| {
+            VefasError::http_error(
                 crate::errors::HttpErrorType::InvalidRequest,
                 "Missing header/body boundary",
-            ))?;
+            )
+        })?;
 
         let header_part = &input_str[..header_end];
         let body_start = header_end + 4;
@@ -536,7 +566,11 @@ impl HttpResponse {
         if body.len() > MAX_HTTP_BODY_SIZE {
             return Err(VefasError::http_error(
                 crate::errors::HttpErrorType::BodyTooLarge,
-                &("Response body too large: ".to_string() + &format_decimal(body.len()) + " bytes (max " + &format_decimal(MAX_HTTP_BODY_SIZE) + ")"),
+                &("Response body too large: ".to_string()
+                    + &format_decimal(body.len())
+                    + " bytes (max "
+                    + &format_decimal(MAX_HTTP_BODY_SIZE)
+                    + ")"),
             ));
         }
 
@@ -603,18 +637,20 @@ impl HttpResponse {
 
     /// Parse response from HTTP wire format
     pub fn parse(input: &[u8]) -> VefasResult<Self> {
-        let input_str = core::str::from_utf8(input)
-            .map_err(|_| VefasError::http_error(
+        let input_str = core::str::from_utf8(input).map_err(|_| {
+            VefasError::http_error(
                 crate::errors::HttpErrorType::InvalidResponse,
                 "Invalid UTF-8 in response",
-            ))?;
+            )
+        })?;
 
         // Find header/body boundary
-        let header_end = input_str.find("\r\n\r\n")
-            .ok_or_else(|| VefasError::http_error(
+        let header_end = input_str.find("\r\n\r\n").ok_or_else(|| {
+            VefasError::http_error(
                 crate::errors::HttpErrorType::InvalidResponse,
                 "Missing header/body boundary",
-            ))?;
+            )
+        })?;
 
         let header_part = &input_str[..header_end];
         let body_start = header_end + 4;
@@ -637,12 +673,12 @@ impl HttpResponse {
         }
 
         let version = status_line_parts[0];
-        let status_code = status_line_parts[1]
-            .parse::<u16>()
-            .map_err(|_| VefasError::http_error(
+        let status_code = status_line_parts[1].parse::<u16>().map_err(|_| {
+            VefasError::http_error(
                 crate::errors::HttpErrorType::InvalidStatusCode,
                 &("Invalid status code: ".to_string() + status_line_parts[1]),
-            ))?;
+            )
+        })?;
         let status_code = HttpStatusCode::new(status_code)?;
         let reason_phrase = status_line_parts.get(2).unwrap_or(&"").to_string();
 
@@ -705,7 +741,8 @@ mod tests {
             "HTTP/1.1",
             headers,
             Vec::new(),
-        ).unwrap();
+        )
+        .unwrap();
 
         let serialized = request.serialize();
         let parsed = HttpRequest::parse(&serialized).unwrap();
@@ -725,7 +762,8 @@ mod tests {
             "OK",
             headers,
             body,
-        ).unwrap();
+        )
+        .unwrap();
 
         let serialized = response.serialize();
         let parsed = HttpResponse::parse(&serialized).unwrap();
@@ -750,7 +788,8 @@ mod tests {
             "HTTP/1.1",
             headers.clone(),
             large_body.clone(),
-        ).is_err());
+        )
+        .is_err());
 
         assert!(HttpResponse::new(
             "HTTP/1.1",
@@ -758,6 +797,7 @@ mod tests {
             "OK",
             headers,
             large_body,
-        ).is_err());
+        )
+        .is_err());
     }
 }

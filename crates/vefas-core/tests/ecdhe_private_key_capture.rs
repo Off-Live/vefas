@@ -2,7 +2,7 @@
 //! These tests assert that the bundle contains the exact ephemeral private key
 //! used for KeyShare; implementation will inject/capture deterministically.
 
-use vefas_core::{BundleBuilder, SessionData, HttpData, VefasKeyLog, VefasClient};
+use vefas_core::{BundleBuilder, HttpData, SessionData, VefasClient, VefasKeyLog};
 
 fn tls_record(content_type: u8, version: [u8; 2], payload: &[u8]) -> Vec<u8> {
     let mut out = Vec::new();
@@ -31,9 +31,9 @@ fn hello_payload(random: [u8; 32]) -> Vec<u8> {
 }
 
 fn sample_session(mut key: Option<[u8; 32]>) -> SessionData {
-    use rustls::pki_types::CertificateDer;
-    use rustls::{ProtocolVersion};
     use rustls::crypto::aws_lc_rs::cipher_suite;
+    use rustls::pki_types::CertificateDer;
+    use rustls::ProtocolVersion;
 
     // Build minimal ClientHello + ServerHello and minimal TLSCiphertext app data
     let ch = handshake_message(1, &hello_payload([1u8; 32]));
@@ -46,7 +46,7 @@ fn sample_session(mut key: Option<[u8; 32]>) -> SessionData {
     SessionData {
         outbound_bytes: [ch_rec, app_req].concat(),
         inbound_bytes: [sh_rec, app_resp].concat(),
-        certificate_chain: vec![CertificateDer::from(vec![0x30,0x82,0x01,0x00])],
+        certificate_chain: vec![CertificateDer::from(vec![0x30, 0x82, 0x01, 0x00])],
         negotiated_suite: cipher_suite::TLS13_AES_128_GCM_SHA256,
         protocol_version: ProtocolVersion::TLSv1_3,
         server_name: "example.com".to_string(),
@@ -56,16 +56,18 @@ fn sample_session(mut key: Option<[u8; 32]>) -> SessionData {
     }
 }
 
-fn default_http() -> HttpData { HttpData {
-    request_bytes: b"GET / HTTP/1.1\r\nHost: example.com\r\n\r\n".to_vec(),
-    response_bytes: b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n".to_vec(),
-    status_code: 200,
-    headers: vec![("Content-Length".to_string(), "0".to_string())],
-    method: "GET".to_string(),
-    path: "/".to_string(),
-    request_headers: vec![("Host".to_string(), "example.com".to_string())],
-    response_body: Vec::new(),
-}}
+fn default_http() -> HttpData {
+    HttpData {
+        request_bytes: b"GET / HTTP/1.1\r\nHost: example.com\r\n\r\n".to_vec(),
+        response_bytes: b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n".to_vec(),
+        status_code: 200,
+        headers: vec![("Content-Length".to_string(), "0".to_string())],
+        method: "GET".to_string(),
+        path: "/".to_string(),
+        request_headers: vec![("Host".to_string(), "example.com".to_string())],
+        response_body: Vec::new(),
+    }
+}
 
 #[test]
 fn bundle_uses_captured_ephemeral_scalar_when_available() {
@@ -80,7 +82,9 @@ fn bundle_uses_captured_ephemeral_scalar_when_available() {
             let http = default_http();
             let keylog = VefasKeyLog::new();
             let mut builder = BundleBuilder::new();
-            let bundle = builder.from_session_data(&session, &http, &keylog).expect("bundle");
+            let bundle = builder
+                .from_session_data(&session, &http, &keylog)
+                .expect("bundle");
             assert_eq!(bundle.client_private_key().unwrap(), expected);
         }
         Err(_) => {
@@ -89,7 +93,9 @@ fn bundle_uses_captured_ephemeral_scalar_when_available() {
             let http = default_http();
             let keylog = VefasKeyLog::new();
             let mut builder = BundleBuilder::new();
-            let bundle = builder.from_session_data(&session, &http, &keylog).expect("bundle");
+            let bundle = builder
+                .from_session_data(&session, &http, &keylog)
+                .expect("bundle");
             assert_eq!(bundle.client_private_key().unwrap(), expected);
         }
     }
@@ -102,8 +108,8 @@ fn bundle_falls_back_without_captured_scalar() {
     let http = default_http();
     let keylog = VefasKeyLog::new();
     let mut builder = BundleBuilder::new();
-    let bundle = builder.from_session_data(&session, &http, &keylog).expect("bundle");
+    let bundle = builder
+        .from_session_data(&session, &http, &keylog)
+        .expect("bundle");
     assert_eq!(bundle.client_private_key().unwrap().len(), 32);
 }
-
-

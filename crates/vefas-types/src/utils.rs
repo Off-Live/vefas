@@ -9,12 +9,12 @@ use alloc::string::{String, ToString};
 pub fn format_hex(value: u16, width: usize) -> String {
     let mut result = String::new();
     let hex_chars = b"0123456789abcdef";
-    
+
     for i in (0..width).rev() {
         let nibble = ((value >> (i * 4)) & 0xF) as usize;
         result.push(hex_chars[nibble] as char);
     }
-    
+
     result
 }
 
@@ -23,15 +23,15 @@ pub fn format_decimal(value: usize) -> String {
     if value == 0 {
         return "0".to_string();
     }
-    
+
     let mut result = String::new();
     let mut n = value;
-    
+
     while n > 0 {
         result.push((b'0' + (n % 10) as u8) as char);
         n /= 10;
     }
-    
+
     // Reverse the string
     result.chars().rev().collect()
 }
@@ -41,22 +41,22 @@ pub fn format_signed_decimal(value: i32) -> String {
     if value == 0 {
         return "0".to_string();
     }
-    
+
     let mut result = String::new();
     let mut n = if value < 0 {
         (-value) as usize
     } else {
         value as usize
     };
-    
+
     while n > 0 {
         result.push((b'0' + (n % 10) as u8) as char);
         n /= 10;
     }
-    
+
     // Reverse the numeric part
     let numeric_part: String = result.chars().rev().collect();
-    
+
     if value < 0 {
         "-".to_string() + &numeric_part
     } else {
@@ -81,7 +81,6 @@ pub fn format_cipher_suite_debug(suite: &crate::tls::CipherSuite) -> String {
         crate::tls::CipherSuite::Aes128GcmSha256 => "Aes128GcmSha256".to_string(),
         crate::tls::CipherSuite::Aes256GcmSha384 => "Aes256GcmSha384".to_string(),
         crate::tls::CipherSuite::ChaCha20Poly1305Sha256 => "ChaCha20Poly1305Sha256".to_string(),
-        crate::tls::CipherSuite::Aes128CcmSha256 => "Aes128CcmSha256".to_string(),
     }
 }
 

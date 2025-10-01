@@ -1,5 +1,5 @@
-use vefas_core::VefasKeyLog;
 use rustls::KeyLog;
+use vefas_core::VefasKeyLog;
 
 #[test]
 fn export_is_deterministic_and_sorted() {
@@ -25,5 +25,3 @@ fn export_is_deterministic_and_sorted() {
     sorted.sort();
     assert_eq!(lines, sorted);
 }
-
-

@@ -7,7 +7,7 @@
 use std::vec::Vec;
 
 use vefas_crypto::traits::{
-    Hash, Aead, KeyExchange, Signature, Kdf, VefasCrypto, PrecompileDetection, PrecompileSummary
+    Aead, Hash, Kdf, KeyExchange, PrecompileDetection, PrecompileSummary, Signature, VefasCrypto,
 };
 use vefas_types::VefasResult;
 
@@ -212,11 +212,20 @@ impl Signature for NativeCryptoProvider {
         crate::signature::rsa_2048_generate_keypair()
     }
 
-    fn rsa_pkcs1_sha256_sign(&self, private_key_der: &[u8], message: &[u8]) -> VefasResult<Vec<u8>> {
+    fn rsa_pkcs1_sha256_sign(
+        &self,
+        private_key_der: &[u8],
+        message: &[u8],
+    ) -> VefasResult<Vec<u8>> {
         crate::signature::rsa_pkcs1_sha256_sign(private_key_der, message)
     }
 
-    fn rsa_pkcs1_sha256_verify(&self, public_key_der: &[u8], message: &[u8], signature: &[u8]) -> bool {
+    fn rsa_pkcs1_sha256_verify(
+        &self,
+        public_key_der: &[u8],
+        message: &[u8],
+        signature: &[u8],
+    ) -> bool {
         crate::signature::rsa_pkcs1_sha256_verify(public_key_der, message, signature)
     }
 
@@ -224,7 +233,12 @@ impl Signature for NativeCryptoProvider {
         crate::signature::rsa_pss_sha256_sign(private_key_der, message)
     }
 
-    fn rsa_pss_sha256_verify(&self, public_key_der: &[u8], message: &[u8], signature: &[u8]) -> bool {
+    fn rsa_pss_sha256_verify(
+        &self,
+        public_key_der: &[u8],
+        message: &[u8],
+        signature: &[u8],
+    ) -> bool {
         crate::signature::rsa_pss_sha256_verify(public_key_der, message, signature)
     }
 
@@ -256,7 +270,6 @@ impl PrecompileDetection for NativeCryptoProvider {
         }
     }
 }
-
 
 impl VefasCrypto for NativeCryptoProvider {
     fn provider_name(&self) -> &'static str {

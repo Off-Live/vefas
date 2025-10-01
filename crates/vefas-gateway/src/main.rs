@@ -7,7 +7,7 @@
 //! - GET /: Service information
 
 use std::env;
-use tracing::{info, error, warn};
+use tracing::{error, info, warn};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
 use vefas_gateway::{VefasGateway, VefasGatewayConfig};
@@ -17,13 +17,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize structured logging
     init_logging();
 
-    info!("Starting VEFAS Gateway Server v{}", env!("CARGO_PKG_VERSION"));
+    info!(
+        "Starting VEFAS Gateway Server v{}",
+        env!("CARGO_PKG_VERSION")
+    );
 
     // Load configuration from environment variables
     let config = load_config();
 
     info!("Configuration loaded: bind_address={}", config.bind_address);
-    info!("Features: CORS={}, request_timeout={}s", config.enable_cors, config.request_timeout);
+    info!(
+        "Features: CORS={}, request_timeout={}s",
+        config.enable_cors, config.request_timeout
+    );
 
     // Create and start the gateway server
     match VefasGateway::new(config).await {
@@ -62,11 +68,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 /// Initialize structured logging with configurable levels
 fn init_logging() {
-    let env_filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| {
-            // Default log levels for different components
-            "vefas_gateway=info,vefas_core=info,axum=info,tower=warn,hyper=warn".into()
-        });
+    let env_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| {
+        // Default log levels for different components
+        "vefas_gateway=info,vefas_core=info,axum=info,tower=warn,hyper=warn".into()
+    });
 
     let fmt_layer = tracing_subscriber::fmt::layer()
         .with_target(true)
@@ -106,10 +111,16 @@ fn load_config() -> VefasGatewayConfig {
                 config.request_timeout = timeout;
             }
             Ok(timeout) => {
-                warn!("Invalid request timeout '{}', using default {}s", timeout, config.request_timeout);
+                warn!(
+                    "Invalid request timeout '{}', using default {}s",
+                    timeout, config.request_timeout
+                );
             }
             Err(e) => {
-                warn!("Failed to parse VEFAS_REQUEST_TIMEOUT '{}': {}", timeout_str, e);
+                warn!(
+                    "Failed to parse VEFAS_REQUEST_TIMEOUT '{}': {}",
+                    timeout_str, e
+                );
             }
         }
     }
@@ -117,14 +128,22 @@ fn load_config() -> VefasGatewayConfig {
     // Maximum request size
     if let Ok(size_str) = env::var("VEFAS_MAX_REQUEST_SIZE") {
         match size_str.parse::<usize>() {
-            Ok(size) if size >= 1024 && size <= 100 * 1024 * 1024 => { // 1KB to 100MB
+            Ok(size) if size >= 1024 && size <= 100 * 1024 * 1024 => {
+                // 1KB to 100MB
                 config.max_request_size = size;
             }
             Ok(size) => {
-                warn!("Invalid max request size '{}', using default {}MB", size, config.max_request_size / 1024 / 1024);
+                warn!(
+                    "Invalid max request size '{}', using default {}MB",
+                    size,
+                    config.max_request_size / 1024 / 1024
+                );
             }
             Err(e) => {
-                warn!("Failed to parse VEFAS_MAX_REQUEST_SIZE '{}': {}", size_str, e);
+                warn!(
+                    "Failed to parse VEFAS_MAX_REQUEST_SIZE '{}': {}",
+                    size_str, e
+                );
             }
         }
     }
@@ -141,7 +160,10 @@ fn load_config() -> VefasGatewayConfig {
                 config.rate_limit = rate;
             }
             Ok(rate) => {
-                warn!("Invalid rate limit '{}', using default {}", rate, config.rate_limit);
+                warn!(
+                    "Invalid rate limit '{}', using default {}",
+                    rate, config.rate_limit
+                );
             }
             Err(e) => {
                 warn!("Failed to parse VEFAS_RATE_LIMIT '{}': {}", rate_str, e);
@@ -153,7 +175,10 @@ fn load_config() -> VefasGatewayConfig {
     info!("Server configuration:");
     info!("  Bind Address: {}", config.bind_address);
     info!("  Request Timeout: {}s", config.request_timeout);
-    info!("  Max Request Size: {}MB", config.max_request_size / 1024 / 1024);
+    info!(
+        "  Max Request Size: {}MB",
+        config.max_request_size / 1024 / 1024
+    );
     info!("  CORS Enabled: {}", config.enable_cors);
     info!("  Rate Limit: {} req/min", config.rate_limit);
 

@@ -2,9 +2,9 @@ use vefas_types::VefasCanonicalBundle;
 
 fn base_bundle() -> VefasCanonicalBundle {
     VefasCanonicalBundle::new(
-        vec![1,2,3],
-        vec![4,5,6],
-        vec![7,8],
+        vec![1, 2, 3],
+        vec![4, 5, 6],
+        vec![7, 8],
         vec![9],
         vec![10],
         [11u8; 32],
@@ -15,7 +15,8 @@ fn base_bundle() -> VefasCanonicalBundle {
         1,
         200,
         [2u8; 32],
-    ).unwrap()
+    )
+    .unwrap()
 }
 
 #[test]
@@ -28,5 +29,3 @@ fn bundle_hash_deterministic_and_sensitive() {
     b3.domain = "different.com".to_string();
     assert_ne!(b1.bundle_hash(), b3.bundle_hash());
 }
-
-

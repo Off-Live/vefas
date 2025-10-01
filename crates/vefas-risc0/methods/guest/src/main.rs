@@ -27,25 +27,36 @@
 
 extern crate alloc;
 
-use vefas_types::{VefasCanonicalBundle, VefasResult, VefasError, tls::CipherSuite, compression::CompressedBundle, VefasProofClaim, VefasPerformanceMetrics, VefasExecutionMetadata, errors::CryptoErrorType};
-use risc0_zkvm::guest::env;
-use alloc::{string::{String, ToString}, vec::Vec};
+use alloc::{
+    string::{String, ToString},
+    vec::Vec,
+};
 use bincode;
+use risc0_zkvm::guest::env;
 use vefas_crypto::{
+    compute_transcript_hash, decrypt_application_record, hex_lower, hkdf_expand_label,
+    parse_http_data, parse_server_cipher_suite, parse_server_hello_key_share,
+    tls_parser::{
+        cipher_suite_name, validate_certificate_verify, validate_client_hello,
+        validate_finished_message, validate_server_hello,
+    },
     traits::{Hash, Kdf, KeyExchange},
-    parse_server_cipher_suite, parse_server_hello_key_share,
-    validate_certificate_message, parse_http_data, HttpData, hex_lower,
-    hkdf_expand_label, decrypt_application_record, compute_transcript_hash,
-    verify_session_keys as verify_session_keys_common,
-    tls_parser::{cipher_suite_name, validate_client_hello, validate_server_hello,
-                 validate_certificate_verify, validate_finished_message},
-    validation::{validate_certificate_domain_binding},
+    validate_certificate_message,
+    validation::validate_certificate_domain_binding,
+    verify_session_keys as verify_session_keys_common, HttpData,
 };
 use vefas_crypto_risc0::create_risc0_provider;
+use vefas_types::{
+    compression::CompressedBundle, errors::CryptoErrorType, tls::CipherSuite, VefasCanonicalBundle,
+    VefasError, VefasExecutionMetadata, VefasPerformanceMetrics, VefasProofClaim, VefasResult,
+};
 
 // Provide a no-op eprintln! for no_std environment to satisfy macro expansion
-macro_rules! eprintln { ($($tt:tt)*) => { () } }
-
+macro_rules! eprintln {
+    ($($tt:tt)*) => {
+        ()
+    };
+}
 
 fn main() {
     // Read input data from the host (could be compressed or uncompressed bundle)
@@ -55,7 +66,8 @@ fn main() {
     let start_cycles = env::cycle_count();
 
     // Attempt to deserialize as compressed bundle first, then as regular bundle
-    let (bundle, compression_metrics) = match bincode::deserialize::<CompressedBundle>(&input_data) {
+    let (bundle, compression_metrics) = match bincode::deserialize::<CompressedBundle>(&input_data)
+    {
         Ok(compressed_bundle) => {
             // Handle compressed bundle
             let decompression_start = env::cycle_count();
@@ -63,7 +75,10 @@ fn main() {
             match vefas_types::compression::BundleCompressor::decompress(&compressed_bundle) {
                 Ok(decompressed_data) => {
                     let decompression_cycles = env::cycle_count() - decompression_start;
-                    eprintln!("RISC0: Decompressed bundle in {} cycles", decompression_cycles);
+                    eprintln!(
+                        "RISC0: Decompressed bundle in {} cycles",
+                        decompression_cycles
+                    );
 
                     match bincode::deserialize::<VefasCanonicalBundle>(&decompressed_data) {
                         Ok(bundle) => {
@@ -112,7 +127,7 @@ fn main() {
             // Log successful verification for audit trail
             eprintln!("VEFAS RISC0 guest verification succeeded");
             claim
-        },
+        }
         Err(e) => {
             // Log detailed error information before panic
             eprintln!("VEFAS RISC0 guest verification failed with error: {:?}", e);
@@ -121,17 +136,38 @@ fn main() {
             // Ensure zkVM execution fails with clear verification failure (matches SP1 behavior)
             match e {
                 VefasError::InvalidInput { field, reason } => {
-                    panic!("VERIFICATION_FAILURE: Invalid input in field '{}': {}", field, reason)
-                },
-                VefasError::CryptoError { error_type, message } => {
-                    panic!("VERIFICATION_FAILURE: Cryptographic error ({:?}): {}", error_type, message)
-                },
-                VefasError::TlsError { error_type, message } => {
-                    panic!("VERIFICATION_FAILURE: TLS error ({:?}): {}", error_type, message)
-                },
-                VefasError::CertificateError { error_type, message } => {
-                    panic!("VERIFICATION_FAILURE: Certificate error ({:?}): {}", error_type, message)
-                },
+                    panic!(
+                        "VERIFICATION_FAILURE: Invalid input in field '{}': {}",
+                        field, reason
+                    )
+                }
+                VefasError::CryptoError {
+                    error_type,
+                    message,
+                } => {
+                    panic!(
+                        "VERIFICATION_FAILURE: Cryptographic error ({:?}): {}",
+                        error_type, message
+                    )
+                }
+                VefasError::TlsError {
+                    error_type,
+                    message,
+                } => {
+                    panic!(
+                        "VERIFICATION_FAILURE: TLS error ({:?}): {}",
+                        error_type, message
+                    )
+                }
+                VefasError::CertificateError {
+                    error_type,
+                    message,
+                } => {
+                    panic!(
+                        "VERIFICATION_FAILURE: Certificate error ({:?}): {}",
+                        error_type, message
+                    )
+                }
                 _ => {
                     panic!("VERIFICATION_FAILURE: Unexpected error: {:?}", e)
                 }
@@ -140,15 +176,42 @@ fn main() {
     };
 
     // Log detailed performance metrics
-    eprintln!("RISC0 VEFAS verification completed in {} total cycles", claim.performance.total_cycles);
-    eprintln!("  - Decompression: {} cycles", claim.performance.decompression_cycles);
-    eprintln!("  - Validation: {} cycles", claim.performance.validation_cycles);
-    eprintln!("  - Handshake: {} cycles", claim.performance.handshake_cycles);
-    eprintln!("  - Certificate validation: {} cycles", claim.performance.certificate_validation_cycles);
-    eprintln!("  - Key derivation: {} cycles", claim.performance.key_derivation_cycles);
-    eprintln!("  - Decryption: {} cycles", claim.performance.decryption_cycles);
-    eprintln!("  - HTTP parsing: {} cycles", claim.performance.http_parsing_cycles);
-    eprintln!("  - Crypto ops: {} cycles", claim.performance.crypto_operations_cycles);
+    eprintln!(
+        "RISC0 VEFAS verification completed in {} total cycles",
+        claim.performance.total_cycles
+    );
+    eprintln!(
+        "  - Decompression: {} cycles",
+        claim.performance.decompression_cycles
+    );
+    eprintln!(
+        "  - Validation: {} cycles",
+        claim.performance.validation_cycles
+    );
+    eprintln!(
+        "  - Handshake: {} cycles",
+        claim.performance.handshake_cycles
+    );
+    eprintln!(
+        "  - Certificate validation: {} cycles",
+        claim.performance.certificate_validation_cycles
+    );
+    eprintln!(
+        "  - Key derivation: {} cycles",
+        claim.performance.key_derivation_cycles
+    );
+    eprintln!(
+        "  - Decryption: {} cycles",
+        claim.performance.decryption_cycles
+    );
+    eprintln!(
+        "  - HTTP parsing: {} cycles",
+        claim.performance.http_parsing_cycles
+    );
+    eprintln!(
+        "  - Crypto ops: {} cycles",
+        claim.performance.crypto_operations_cycles
+    );
     eprintln!("  - Memory usage: {} bytes", claim.performance.memory_usage);
     if let Some(_ratio) = claim.performance.compression_ratio {
         eprintln!("  - Compression ratio: {:.1}%", _ratio);
@@ -167,11 +230,14 @@ fn main() {
 fn verify_vefas_bundle(
     bundle: &VefasCanonicalBundle,
     start_cycles: u64,
-    compression_metrics: Option<(u64, Option<f32>, Option<usize>, Option<usize>)>
+    compression_metrics: Option<(u64, Option<f32>, Option<usize>, Option<usize>)>,
 ) -> VefasResult<VefasProofClaim> {
     let mut performance = VefasPerformanceMetrics {
         total_cycles: 0,
-        decompression_cycles: compression_metrics.as_ref().map(|(cycles, _, _, _)| *cycles).unwrap_or(0),
+        decompression_cycles: compression_metrics
+            .as_ref()
+            .map(|(cycles, _, _, _)| *cycles)
+            .unwrap_or(0),
         validation_cycles: 0,
         handshake_cycles: 0,
         certificate_validation_cycles: 0,
@@ -180,9 +246,15 @@ fn verify_vefas_bundle(
         http_parsing_cycles: 0,
         crypto_operations_cycles: 0,
         memory_usage: 0,
-        compression_ratio: compression_metrics.as_ref().and_then(|(_, ratio, _, _)| *ratio),
-        original_bundle_size: compression_metrics.as_ref().and_then(|(_, _, size, _)| *size),
-        decompressed_bundle_size: compression_metrics.as_ref().and_then(|(_, _, _, size)| *size),
+        compression_ratio: compression_metrics
+            .as_ref()
+            .and_then(|(_, ratio, _, _)| *ratio),
+        original_bundle_size: compression_metrics
+            .as_ref()
+            .and_then(|(_, _, size, _)| *size),
+        decompressed_bundle_size: compression_metrics
+            .as_ref()
+            .and_then(|(_, _, _, size)| *size),
     };
     let crypto = create_risc0_provider();
 
@@ -233,18 +305,33 @@ fn verify_vefas_bundle(
         cert_concat.extend_from_slice(cert);
     }
     let certificate_chain_hash_bytes = crypto.sha256(&cert_concat);
-    let certificate_chain_hash: [u8; 32] = certificate_chain_hash_bytes.try_into()
-        .map_err(|_| VefasError::crypto_error(CryptoErrorType::HashFailed, "Certificate chain hash conversion failed"))?;
+    let certificate_chain_hash: [u8; 32] =
+        certificate_chain_hash_bytes.try_into().map_err(|_| {
+            VefasError::crypto_error(
+                CryptoErrorType::HashFailed,
+                "Certificate chain hash conversion failed",
+            )
+        })?;
 
     let mut hs_msgs: Vec<&[u8]> = Vec::new();
     hs_msgs.push(&client_hello);
     hs_msgs.push(&server_hello);
-    if !certificate_msg.is_empty() { hs_msgs.push(&certificate_msg); }
-    if !certificate_verify_msg.is_empty() { hs_msgs.push(&certificate_verify_msg); }
+    if !certificate_msg.is_empty() {
+        hs_msgs.push(&certificate_msg);
+    }
+    if !certificate_verify_msg.is_empty() {
+        hs_msgs.push(&certificate_verify_msg);
+    }
 
-    let handshake_transcript_hash_bytes = compute_transcript_hash(&crypto, &hs_msgs, CipherSuite::Aes128GcmSha256);
-    let handshake_transcript_hash: [u8; 32] = handshake_transcript_hash_bytes.try_into()
-        .map_err(|_| VefasError::crypto_error(CryptoErrorType::HashFailed, "Handshake transcript hash conversion failed"))?;
+    let handshake_transcript_hash_bytes =
+        compute_transcript_hash(&crypto, &hs_msgs, CipherSuite::Aes128GcmSha256);
+    let handshake_transcript_hash: [u8; 32] =
+        handshake_transcript_hash_bytes.try_into().map_err(|_| {
+            VefasError::crypto_error(
+                CryptoErrorType::HashFailed,
+                "Handshake transcript hash conversion failed",
+            )
+        })?;
     performance.crypto_operations_cycles = env::cycle_count() - crypto_start;
 
     // Calculate total cycles and estimate memory usage
@@ -253,10 +340,25 @@ fn verify_vefas_bundle(
 
     // Step 7: Create verified claim
     // Generate default commitments for now - these should be computed from actual request/response
-    let request_commitment: [u8; 32] = crypto.sha256(request_hash.as_bytes()).try_into()
-        .map_err(|_| VefasError::crypto_error(CryptoErrorType::HashFailed, "Request commitment generation failed"))?;
-    let response_commitment: [u8; 32] = crypto.sha256(response_hash.as_bytes()).try_into()
-        .map_err(|_| VefasError::crypto_error(CryptoErrorType::HashFailed, "Response commitment generation failed"))?;
+    let request_commitment: [u8; 32] =
+        crypto
+            .sha256(request_hash.as_bytes())
+            .try_into()
+            .map_err(|_| {
+                VefasError::crypto_error(
+                    CryptoErrorType::HashFailed,
+                    "Request commitment generation failed",
+                )
+            })?;
+    let response_commitment: [u8; 32] = crypto
+        .sha256(response_hash.as_bytes())
+        .try_into()
+        .map_err(|_| {
+            VefasError::crypto_error(
+                CryptoErrorType::HashFailed,
+                "Response commitment generation failed",
+            )
+        })?;
 
     // Create execution metadata
     let execution_metadata = VefasExecutionMetadata {
@@ -268,26 +370,29 @@ fn verify_vefas_bundle(
     };
 
     VefasProofClaim::new(
-        bundle.domain.clone(),                           // domain
-        method,                                          // method
-        path,                                           // path
-        request_commitment,                             // request_commitment
-        response_commitment,                            // response_commitment
-        request_hash,                                   // request_hash
-        response_hash,                                  // response_hash
-        status_code,                                    // status_code
-        tls_version,                                    // tls_version
-        cipher_suite,                                   // cipher_suite
-        certificate_chain_hash,                         // certificate_chain_hash
-        handshake_transcript_hash,                      // handshake_transcript_hash
-        bundle.timestamp,                               // timestamp
-        performance,                                    // performance
-        execution_metadata,                             // execution_metadata
+        bundle.domain.clone(),     // domain
+        method,                    // method
+        path,                      // path
+        request_commitment,        // request_commitment
+        response_commitment,       // response_commitment
+        request_hash,              // request_hash
+        response_hash,             // response_hash
+        status_code,               // status_code
+        tls_version,               // tls_version
+        cipher_suite,              // cipher_suite
+        certificate_chain_hash,    // certificate_chain_hash
+        handshake_transcript_hash, // handshake_transcript_hash
+        bundle.timestamp,          // timestamp
+        performance,               // performance
+        execution_metadata,        // execution_metadata
     )
 }
 
 /// Verify TLS 1.3 handshake cryptographic validity
-fn verify_tls_handshake(bundle: &VefasCanonicalBundle, crypto: &vefas_crypto_risc0::RISC0CryptoProvider) -> VefasResult<u64> {
+fn verify_tls_handshake(
+    bundle: &VefasCanonicalBundle,
+    crypto: &vefas_crypto_risc0::RISC0CryptoProvider,
+) -> VefasResult<u64> {
     let cert_validation_start = env::cycle_count();
 
     // Extract bundle data using accessor methods
@@ -303,8 +408,12 @@ fn verify_tls_handshake(bundle: &VefasCanonicalBundle, crypto: &vefas_crypto_ris
     // Verify ServerHello message structure and cipher suite
     validate_server_hello(&server_hello)?;
     let suite = parse_server_cipher_suite(&server_hello)?;
-    if suite != 0x1301 { // TLS_AES_128_GCM_SHA256
-        return Err(VefasError::invalid_input("server_hello", "Unsupported cipher suite (only TLS_AES_128_GCM_SHA256)"));
+    if suite != 0x1301 {
+        // TLS_AES_128_GCM_SHA256
+        return Err(VefasError::invalid_input(
+            "server_hello",
+            "Unsupported cipher suite (only TLS_AES_128_GCM_SHA256)",
+        ));
     }
 
     // Verify Certificate message and chain
@@ -320,7 +429,10 @@ fn verify_tls_handshake(bundle: &VefasCanonicalBundle, crypto: &vefas_crypto_ris
     verify_server_finished(bundle, crypto)?;
 
     let cert_validation_cycles = env::cycle_count() - cert_validation_start;
-    eprintln!("RISC0: Certificate validation completed in {} cycles", cert_validation_cycles);
+    eprintln!(
+        "RISC0: Certificate validation completed in {} cycles",
+        cert_validation_cycles
+    );
 
     Ok(cert_validation_cycles)
 }
@@ -332,7 +444,10 @@ struct SessionKeys {
 }
 
 /// Derive TLS 1.3 session keys from handshake data
-fn derive_session_keys(bundle: &VefasCanonicalBundle, crypto: &vefas_crypto_risc0::RISC0CryptoProvider) -> VefasResult<SessionKeys> {
+fn derive_session_keys(
+    bundle: &VefasCanonicalBundle,
+    crypto: &vefas_crypto_risc0::RISC0CryptoProvider,
+) -> VefasResult<SessionKeys> {
     // Extract bundle data using accessor methods
     let server_hello = bundle.server_hello()?;
     let client_hello = bundle.client_hello()?;
@@ -343,23 +458,36 @@ fn derive_session_keys(bundle: &VefasCanonicalBundle, crypto: &vefas_crypto_risc
     let key_share = parse_server_hello_key_share(&server_hello)?;
 
     let shared = match key_share.group {
-        0x001D => { // x25519
+        0x001D => {
+            // x25519
             if key_share.key_exchange.len() != 32 {
-                return Err(VefasError::invalid_input("server_hello", "Invalid X25519 key"));
+                return Err(VefasError::invalid_input(
+                    "server_hello",
+                    "Invalid X25519 key",
+                ));
             }
             let mut pub_arr = [0u8; 32];
             pub_arr.copy_from_slice(&key_share.key_exchange);
             crypto.x25519_compute_shared_secret(&client_private_key, &pub_arr)?
         }
-        0x0017 => { // secp256r1
+        0x0017 => {
+            // secp256r1
             if key_share.key_exchange.len() != 65 {
-                return Err(VefasError::invalid_input("server_hello", "Invalid P-256 key"));
+                return Err(VefasError::invalid_input(
+                    "server_hello",
+                    "Invalid P-256 key",
+                ));
             }
             let mut pub_arr = [0u8; 65];
             pub_arr.copy_from_slice(&key_share.key_exchange);
             crypto.p256_compute_shared_secret(&client_private_key, &pub_arr)?
         }
-        _ => return Err(VefasError::invalid_input("server_hello", "Unsupported key_share group")),
+        _ => {
+            return Err(VefasError::invalid_input(
+                "server_hello",
+                "Unsupported key_share group",
+            ))
+        }
     };
 
     // Build application transcript (ClientHello, ServerHello, [Certificate], [CertificateVerify])
@@ -374,19 +502,15 @@ fn derive_session_keys(bundle: &VefasCanonicalBundle, crypto: &vefas_crypto_risc
     }
 
     // Use shared implementation validated against RFC8448 vectors
-    let keys = verify_session_keys_common(
-        crypto,
-        &transcript,
-        &shared,
-        CipherSuite::Aes128GcmSha256,
-    )?;
+    let keys =
+        verify_session_keys_common(crypto, &transcript, &shared, CipherSuite::Aes128GcmSha256)?;
 
     let mut c = [0u8; 32];
     let mut s = [0u8; 32];
     if keys.client_application_secret.len() != 32 || keys.server_application_secret.len() != 32 {
         return Err(VefasError::crypto_error(
             vefas_types::errors::CryptoErrorType::InvalidKeyLength,
-            "unexpected secret length"
+            "unexpected secret length",
         ));
     }
     c.copy_from_slice(&keys.client_application_secret);
@@ -394,12 +518,16 @@ fn derive_session_keys(bundle: &VefasCanonicalBundle, crypto: &vefas_crypto_risc
 
     Ok(SessionKeys {
         client_application_traffic_secret: c,
-        server_application_traffic_secret: s
+        server_application_traffic_secret: s,
     })
 }
 
 /// Decrypt TLS application data to extract HTTP content
-fn decrypt_application_data(bundle: &VefasCanonicalBundle, keys: &SessionKeys, crypto: &vefas_crypto_risc0::RISC0CryptoProvider) -> VefasResult<HttpData> {
+fn decrypt_application_data(
+    bundle: &VefasCanonicalBundle,
+    keys: &SessionKeys,
+    crypto: &vefas_crypto_risc0::RISC0CryptoProvider,
+) -> VefasResult<HttpData> {
     // Extract bundle data using accessor methods
     let server_hello = bundle.server_hello()?;
     let encrypted_request = bundle.encrypted_request()?;
@@ -408,7 +536,10 @@ fn decrypt_application_data(bundle: &VefasCanonicalBundle, keys: &SessionKeys, c
     // Only TLS_AES_128_GCM_SHA256 supported
     let suite = parse_server_cipher_suite(&server_hello)?;
     if suite != 0x1301 {
-        return Err(VefasError::invalid_input("server_hello", "Unsupported cipher suite"));
+        return Err(VefasError::invalid_input(
+            "server_hello",
+            "Unsupported cipher suite",
+        ));
     }
 
     // For the first application record in each direction, the sequence number must be 0.
@@ -416,21 +547,24 @@ fn decrypt_application_data(bundle: &VefasCanonicalBundle, keys: &SessionKeys, c
         crypto,
         &encrypted_request,
         &keys.client_application_traffic_secret,
-        0
+        0,
     )?;
 
     let response = decrypt_application_record(
         crypto,
         &encrypted_response,
         &keys.server_application_traffic_secret,
-        0
+        0,
     )?;
 
     Ok(HttpData::new(request, response))
 }
 
 /// Verify ServerFinished message using transcript hash
-fn verify_server_finished(bundle: &VefasCanonicalBundle, crypto: &vefas_crypto_risc0::RISC0CryptoProvider) -> VefasResult<()> {
+fn verify_server_finished(
+    bundle: &VefasCanonicalBundle,
+    crypto: &vefas_crypto_risc0::RISC0CryptoProvider,
+) -> VefasResult<()> {
     // Extract bundle data using accessor methods
     let server_hello = bundle.server_hello()?;
     let client_hello = bundle.client_hello()?;
@@ -443,23 +577,36 @@ fn verify_server_finished(bundle: &VefasCanonicalBundle, crypto: &vefas_crypto_r
     let key_share = parse_server_hello_key_share(&server_hello)?;
 
     let shared = match key_share.group {
-        0x001D => { // X25519
+        0x001D => {
+            // X25519
             if key_share.key_exchange.len() != 32 {
-                return Err(VefasError::invalid_input("server_hello", "Invalid X25519 key length"));
+                return Err(VefasError::invalid_input(
+                    "server_hello",
+                    "Invalid X25519 key length",
+                ));
             }
             let mut pk = [0u8; 32];
             pk.copy_from_slice(&key_share.key_exchange);
             crypto.x25519_compute_shared_secret(&client_private_key, &pk)?
         }
-        0x0017 => { // P-256
+        0x0017 => {
+            // P-256
             if key_share.key_exchange.len() != 65 {
-                return Err(VefasError::invalid_input("server_hello", "Invalid P-256 key length"));
+                return Err(VefasError::invalid_input(
+                    "server_hello",
+                    "Invalid P-256 key length",
+                ));
             }
             let mut pk = [0u8; 65];
             pk.copy_from_slice(&key_share.key_exchange);
             crypto.p256_compute_shared_secret(&client_private_key, &pk)?
         }
-        _ => return Err(VefasError::invalid_input("server_hello", "Unsupported key_share group")),
+        _ => {
+            return Err(VefasError::invalid_input(
+                "server_hello",
+                "Unsupported key_share group",
+            ))
+        }
     };
 
     let zeros = [0u8; 32];
@@ -471,8 +618,12 @@ fn verify_server_finished(bundle: &VefasCanonicalBundle, crypto: &vefas_crypto_r
     let mut msgs: Vec<&[u8]> = Vec::new();
     msgs.push(&client_hello);
     msgs.push(&server_hello);
-    if !certificate_msg.is_empty() { msgs.push(&certificate_msg); }
-    if !certificate_verify_msg.is_empty() { msgs.push(&certificate_verify_msg); }
+    if !certificate_msg.is_empty() {
+        msgs.push(&certificate_msg);
+    }
+    if !certificate_verify_msg.is_empty() {
+        msgs.push(&certificate_verify_msg);
+    }
     let th = compute_transcript_hash(crypto, &msgs, CipherSuite::Aes128GcmSha256);
 
     // Derive server handshake traffic secret and finished_key
@@ -487,19 +638,41 @@ fn verify_server_finished(bundle: &VefasCanonicalBundle, crypto: &vefas_crypto_r
     // Parse Finished handshake
     validate_finished_message(&server_finished_msg)?;
     let fin = &server_finished_msg;
-    if fin.len() < 4 { return Err(VefasError::invalid_input("server_finished", "Too short")); }
-    if fin[0] != 0x14 { return Err(VefasError::invalid_input("server_finished", "Wrong handshake type")); }
+    if fin.len() < 4 {
+        return Err(VefasError::invalid_input("server_finished", "Too short"));
+    }
+    if fin[0] != 0x14 {
+        return Err(VefasError::invalid_input(
+            "server_finished",
+            "Wrong handshake type",
+        ));
+    }
     let len = ((fin[1] as usize) << 16) | ((fin[2] as usize) << 8) | (fin[3] as usize);
-    if 4 + len != fin.len() { return Err(VefasError::invalid_input("server_finished", "Length mismatch")); }
-    if len != verify_expected.len() { return Err(VefasError::invalid_input("server_finished", "Unexpected verify_data length")); }
+    if 4 + len != fin.len() {
+        return Err(VefasError::invalid_input(
+            "server_finished",
+            "Length mismatch",
+        ));
+    }
+    if len != verify_expected.len() {
+        return Err(VefasError::invalid_input(
+            "server_finished",
+            "Unexpected verify_data length",
+        ));
+    }
     if &fin[4..] != verify_expected {
-        return Err(VefasError::invalid_input("server_finished", "verify_data mismatch"));
+        return Err(VefasError::invalid_input(
+            "server_finished",
+            "verify_data mismatch",
+        ));
     }
     Ok(())
 }
 
 fn to_array_32(v: &Vec<u8>) -> VefasResult<[u8; 32]> {
-    if v.len() != 32 { return Err(VefasError::invalid_input("kdf", "length")); }
+    if v.len() != 32 {
+        return Err(VefasError::invalid_input("kdf", "length"));
+    }
     let mut a = [0u8; 32];
     a.copy_from_slice(v);
     Ok(a)
@@ -510,13 +683,27 @@ fn estimate_memory_usage(bundle: &VefasCanonicalBundle) -> usize {
     let mut total = core::mem::size_of::<VefasCanonicalBundle>();
 
     // Safely access bundle data through accessor methods
-    if let Ok(client_hello) = bundle.client_hello() { total += client_hello.len(); }
-    if let Ok(server_hello) = bundle.server_hello() { total += server_hello.len(); }
-    if let Ok(certificate_msg) = bundle.certificate_msg() { total += certificate_msg.len(); }
-    if let Ok(certificate_verify_msg) = bundle.certificate_verify_msg() { total += certificate_verify_msg.len(); }
-    if let Ok(server_finished_msg) = bundle.server_finished_msg() { total += server_finished_msg.len(); }
-    if let Ok(encrypted_request) = bundle.encrypted_request() { total += encrypted_request.len(); }
-    if let Ok(encrypted_response) = bundle.encrypted_response() { total += encrypted_response.len(); }
+    if let Ok(client_hello) = bundle.client_hello() {
+        total += client_hello.len();
+    }
+    if let Ok(server_hello) = bundle.server_hello() {
+        total += server_hello.len();
+    }
+    if let Ok(certificate_msg) = bundle.certificate_msg() {
+        total += certificate_msg.len();
+    }
+    if let Ok(certificate_verify_msg) = bundle.certificate_verify_msg() {
+        total += certificate_verify_msg.len();
+    }
+    if let Ok(server_finished_msg) = bundle.server_finished_msg() {
+        total += server_finished_msg.len();
+    }
+    if let Ok(encrypted_request) = bundle.encrypted_request() {
+        total += encrypted_request.len();
+    }
+    if let Ok(encrypted_response) = bundle.encrypted_response() {
+        total += encrypted_response.len();
+    }
     total += bundle.domain.len();
 
     if let Ok(certificate_chain) = bundle.certificate_chain() {
@@ -565,25 +752,27 @@ mod tests {
         let bundle = VefasCanonicalBundle {
             version: vefas_types::VEFAS_PROTOCOL_VERSION,
             compression_version: 0, // Uncompressed
-            storage: vefas_types::bundle::BundleStorage::Uncompressed(vefas_types::bundle::UncompressedBundleData {
-                client_hello: vec![0x01, 0x00, 0x00, 0x01, 0xFF], // Malformed ClientHello
-                server_hello: vec![0x02, 0x00, 0x00, 0x01, 0xFF], // Malformed ServerHello
-                certificate_msg: Vec::new(),
-                certificate_verify_msg: Vec::new(),
-                server_finished_msg: Vec::new(),
-                client_private_key: [0u8; 32],
-                certificate_chain: Vec::new(),
-                encrypted_request: {
-                    let mut v = vec![23, 3, 3, 0, 16];
-                    v.extend_from_slice(&[0u8; 16]); // Minimal valid-looking record
-                    v
+            storage: vefas_types::bundle::BundleStorage::Uncompressed(
+                vefas_types::bundle::UncompressedBundleData {
+                    client_hello: vec![0x01, 0x00, 0x00, 0x01, 0xFF], // Malformed ClientHello
+                    server_hello: vec![0x02, 0x00, 0x00, 0x01, 0xFF], // Malformed ServerHello
+                    certificate_msg: Vec::new(),
+                    certificate_verify_msg: Vec::new(),
+                    server_finished_msg: Vec::new(),
+                    client_private_key: [0u8; 32],
+                    certificate_chain: Vec::new(),
+                    encrypted_request: {
+                        let mut v = vec![23, 3, 3, 0, 16];
+                        v.extend_from_slice(&[0u8; 16]); // Minimal valid-looking record
+                        v
+                    },
+                    encrypted_response: {
+                        let mut v = vec![23, 3, 3, 0, 16];
+                        v.extend_from_slice(&[0u8; 16]); // Minimal valid-looking record
+                        v
+                    },
                 },
-                encrypted_response: {
-                    let mut v = vec![23, 3, 3, 0, 16];
-                    v.extend_from_slice(&[0u8; 16]); // Minimal valid-looking record
-                    v
-                },
-            }),
+            ),
             domain: "example.com".to_string(), // Valid domain
             timestamp: 1234567890,
             expected_status: 200,
@@ -600,13 +789,16 @@ mod tests {
             VefasError::InvalidInput { field, reason } => {
                 assert!(!field.is_empty());
                 assert!(!reason.is_empty());
-            },
-            VefasError::CryptoError { error_type, message } => {
+            }
+            VefasError::CryptoError {
+                error_type,
+                message,
+            } => {
                 assert!(!message.is_empty());
-            },
+            }
             VefasError::SerializationError { message } => {
                 assert!(!message.is_empty());
-            },
+            }
             _ => {
                 // Other error types are also acceptable as long as they're specific
             }

@@ -4,14 +4,18 @@
 //! identical results across different zkVM platforms (SP1 and RISC0).
 
 use vefas_crypto::{
-    input_validation::{SafeParser, parse_der_length, validate_tls_record_header},
-    tls_parser::{parse_handshake_header, parse_server_cipher_suite,
-                 cipher_suite_name, validate_client_hello, validate_server_hello,
-                 validate_certificate_verify, validate_finished_message, remove_tls13_padding},
-    validation::{validate_x509_certificate, validate_der_structure, domain_matches,
-                validate_certificate_chain_structure, validate_certificate_message},
-    http_utils::{parse_http_data, HttpData, hex_lower, parse_http_request, parse_http_response},
     derive_aead_nonce,
+    http_utils::{hex_lower, parse_http_data, parse_http_request, parse_http_response, HttpData},
+    input_validation::{parse_der_length, validate_tls_record_header, SafeParser},
+    tls_parser::{
+        cipher_suite_name, parse_handshake_header, parse_server_cipher_suite, remove_tls13_padding,
+        validate_certificate_verify, validate_client_hello, validate_finished_message,
+        validate_server_hello,
+    },
+    validation::{
+        domain_matches, validate_certificate_chain_structure, validate_certificate_message,
+        validate_der_structure, validate_x509_certificate,
+    },
 };
 use vefas_types::VefasError;
 
@@ -178,8 +182,10 @@ fn domain_matching_consistency() {
 
 #[test]
 fn http_parsing_consistency() {
-    let request_data = b"GET /api/test HTTP/1.1\r\nHost: example.com\r\nUser-Agent: test\r\n\r\ntest body";
-    let response_data = b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 9\r\n\r\ntest body";
+    let request_data =
+        b"GET /api/test HTTP/1.1\r\nHost: example.com\r\nUser-Agent: test\r\n\r\ntest body";
+    let response_data =
+        b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 9\r\n\r\ntest body";
 
     let http_data = HttpData::new(request_data.to_vec(), response_data.to_vec());
     let result = parse_http_data(&http_data);
@@ -293,7 +299,7 @@ fn error_categorization_consistency() {
 
     let crypto_err = VefasError::crypto_error(
         vefas_types::errors::CryptoErrorType::InvalidKeyLength,
-        "test crypto error"
+        "test crypto error",
     );
     assert_eq!(crypto_err.category(), "crypto");
 }
@@ -305,7 +311,7 @@ fn cross_platform_cipher_suite_handling() {
     let expected_names = [
         "TLS_AES_128_GCM_SHA256",
         "TLS_AES_256_GCM_SHA384",
-        "TLS_CHACHA20_POLY1305_SHA256"
+        "TLS_CHACHA20_POLY1305_SHA256",
     ];
 
     for (suite, expected) in supported_suites.iter().zip(expected_names.iter()) {
@@ -397,8 +403,8 @@ mod platform_specific_tests {
 
         // Test various invalid inputs that should be caught consistently
         let invalid_inputs = vec![
-            vec![], // Empty
-            vec![0], // Too short
+            vec![],             // Empty
+            vec![0],            // Too short
             vec![0xFF; 100000], // Too large
         ];
 
@@ -420,7 +426,10 @@ mod platform_specific_tests {
         // Test error creation and formatting
         let errors = vec![
             VefasError::invalid_input("test", "reason"),
-            VefasError::crypto_error(vefas_types::errors::CryptoErrorType::InvalidKeyLength, "msg"),
+            VefasError::crypto_error(
+                vefas_types::errors::CryptoErrorType::InvalidKeyLength,
+                "msg",
+            ),
             VefasError::tls_error(vefas_types::errors::TlsErrorType::InvalidHandshake, "msg"),
         ];
 

@@ -45,38 +45,41 @@ extern crate alloc;
 
 // Note: alloc types are available through submodules as needed
 use vefas_types::{
-    VefasResult,
     tls::{CipherSuite, SessionKeys},
+    VefasResult,
 };
 
-pub mod traits;
-pub mod types;
-pub mod error;
 pub mod constants;
+pub mod error;
+pub mod http_utils;
 pub mod input_validation;
 pub mod tls_parser;
+pub mod traits;
+pub mod types;
 pub mod validation;
-pub mod http_utils;
 
 // Re-export new trait structure for convenience
+pub use constants::*;
+pub use error::{CryptoError, CryptoResult};
 pub use traits::{
-    VefasCrypto, Hash, Aead, KeyExchange, Signature, Kdf, PrecompileDetection,
-    PrecompileSummary
+    Aead, Hash, Kdf, KeyExchange, PrecompileDetection, PrecompileSummary, Signature, VefasCrypto,
 };
 pub use types::{
-    EcdsaSignature, PublicKey, PrivateKey, AeadKey, AeadNonce,
-    HashOutput, HkdfSalt, HkdfInfo, CertificateChain
+    AeadKey, AeadNonce, CertificateChain, EcdsaSignature, HashOutput, HkdfInfo, HkdfSalt,
+    PrivateKey, PublicKey,
 };
-pub use error::{CryptoError, CryptoResult};
-pub use constants::*;
 
 // Re-export utility modules for convenience
-pub use input_validation::{SafeParser, validate_tls_record_header, validate_handshake_header};
-pub use tls_parser::{parse_handshake_header, parse_server_cipher_suite, parse_server_hello_key_share,
-                     hkdf_expand_label, decrypt_application_record, compute_transcript_hash};
-pub use validation::{validate_x509_certificate, validate_certificate_chain_structure,
-                     validate_certificate_message, domain_matches};
-pub use http_utils::{parse_http_data, HttpData, hex_lower};
+pub use http_utils::{hex_lower, parse_http_data, HttpData};
+pub use input_validation::{validate_handshake_header, validate_tls_record_header, SafeParser};
+pub use tls_parser::{
+    compute_transcript_hash, decrypt_application_record, hkdf_expand_label, parse_handshake_header,
+    parse_server_cipher_suite, parse_server_hello_key_share,
+};
+pub use validation::{
+    domain_matches, validate_certificate_chain_structure, validate_certificate_message,
+    validate_x509_certificate, verify_certificate_chain_signatures, verify_certificate_signature,
+};
 
 /// Verify TLS 1.3 session keys derivation
 pub fn verify_session_keys(
@@ -85,7 +88,6 @@ pub fn verify_session_keys(
     shared_secret: &[u8],
     cipher_suite: CipherSuite,
 ) -> VefasResult<SessionKeys> {
-
     // Minimal support for TLS_AES_128_GCM_SHA256 and TLS_AES_256_GCM_SHA384
     match cipher_suite {
         CipherSuite::Aes128GcmSha256 | CipherSuite::Aes256GcmSha384 => {}
@@ -97,8 +99,12 @@ pub fn verify_session_keys(
         }
     }
 
-    let key_len: usize = match cipher_suite { CipherSuite::Aes128GcmSha256 => 16, CipherSuite::Aes256GcmSha384 => 32, _ => 16 };  // AES-128/256
-    let iv_len: usize = 12;   // 96-bit IV
+    let key_len: usize = match cipher_suite {
+        CipherSuite::Aes128GcmSha256 => 16,
+        CipherSuite::Aes256GcmSha384 => 32,
+        _ => 16,
+    }; // AES-128/256
+    let iv_len: usize = 12; // 96-bit IV
     let handshake_hash_vec = match cipher_suite {
         CipherSuite::Aes128GcmSha256 => provider.sha256(handshake_transcript).to_vec(),
         CipherSuite::Aes256GcmSha384 => provider.sha384(handshake_transcript).to_vec(),
@@ -111,8 +117,13 @@ pub fn verify_session_keys(
         CipherSuite::Aes256GcmSha384 => provider.sha384(&[]).to_vec(),
         _ => provider.sha256(&[]).to_vec(),
     };
-    let hash_len: u8 = match cipher_suite { CipherSuite::Aes128GcmSha256 => 32, CipherSuite::Aes256GcmSha384 => 48, _ => 32 };
-    let derived = provider.hkdf_expand_label(&early_secret, b"derived", &empty_hash_vec, hash_len)?;
+    let hash_len: u8 = match cipher_suite {
+        CipherSuite::Aes128GcmSha256 => 32,
+        CipherSuite::Aes256GcmSha384 => 48,
+        _ => 32,
+    };
+    let derived =
+        provider.hkdf_expand_label(&early_secret, b"derived", &empty_hash_vec, hash_len)?;
     let mut derived_arr = [0u8; 32];
     // Truncate/fit if SHA-384 path
     let take = core::cmp::min(32, derived.len());
@@ -120,24 +131,46 @@ pub fn verify_session_keys(
 
     let handshake_secret = provider.hkdf_extract(&derived_arr, shared_secret);
 
-    let _c_hs = provider.hkdf_expand_label(&handshake_secret, b"c hs traffic", &handshake_hash_vec, hash_len)?;
-    let _s_hs = provider.hkdf_expand_label(&handshake_secret, b"s hs traffic", &handshake_hash_vec, hash_len)?;
+    let _c_hs = provider.hkdf_expand_label(
+        &handshake_secret,
+        b"c hs traffic",
+        &handshake_hash_vec,
+        hash_len,
+    )?;
+    let _s_hs = provider.hkdf_expand_label(
+        &handshake_secret,
+        b"s hs traffic",
+        &handshake_hash_vec,
+        hash_len,
+    )?;
 
-    let derived2 = provider.hkdf_expand_label(&handshake_secret, b"derived", &empty_hash_vec, hash_len)?;
+    let derived2 =
+        provider.hkdf_expand_label(&handshake_secret, b"derived", &empty_hash_vec, hash_len)?;
     let mut derived2_arr = [0u8; 32];
     let take2 = core::cmp::min(32, derived2.len());
     derived2_arr[..take2].copy_from_slice(&derived2[..take2]);
     let master_secret = provider.hkdf_extract(&derived2_arr, &[]);
 
-    let c_ap = provider.hkdf_expand_label(&master_secret, b"c ap traffic", &handshake_hash_vec, hash_len)?;
-    let s_ap = provider.hkdf_expand_label(&master_secret, b"s ap traffic", &handshake_hash_vec, hash_len)?;
+    let c_ap = provider.hkdf_expand_label(
+        &master_secret,
+        b"c ap traffic",
+        &handshake_hash_vec,
+        hash_len,
+    )?;
+    let s_ap = provider.hkdf_expand_label(
+        &master_secret,
+        b"s ap traffic",
+        &handshake_hash_vec,
+        hash_len,
+    )?;
 
     let c_key = provider.hkdf_expand_label(&c_ap, b"key", &[], key_len as u8)?;
     let s_key = provider.hkdf_expand_label(&s_ap, b"key", &[], key_len as u8)?;
     let c_iv = provider.hkdf_expand_label(&c_ap, b"iv", &[], iv_len as u8)?;
     let s_iv = provider.hkdf_expand_label(&s_ap, b"iv", &[], iv_len as u8)?;
 
-    let res_master = provider.hkdf_expand_label(&master_secret, b"res master", &handshake_hash_vec, hash_len)?;
+    let res_master =
+        provider.hkdf_expand_label(&master_secret, b"res master", &handshake_hash_vec, hash_len)?;
 
     let mut out = SessionKeys::new(cipher_suite);
     out.client_application_secret = c_ap;
@@ -181,4 +214,3 @@ pub fn derive_aead_nonce(static_iv: &[u8], sequence_number: u64) -> VefasResult<
 //
 // Full certificate chain validation (including CA trust, OCSP, etc.) would require
 // integrating a dedicated X.509 library and is marked as future work.
-

@@ -12,7 +12,8 @@ fn parses_response_with_content_length() {
 #[test]
 fn decodes_chunked_transfer_encoding_single_chunk() {
     let mut proc = HttpProcessor::new();
-    let response = b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\nB\r\nHello World\r\n0\r\n\r\n";
+    let response =
+        b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\nB\r\nHello World\r\n0\r\n\r\n";
     let parsed = proc.parse_http_response(response).expect("parse");
     // Expect body to be de-chunked: "Hello World"
     assert_eq!(parsed.status_code, 200);
@@ -29,5 +30,3 @@ fn decodes_chunked_transfer_encoding_multiple_chunks() {
     let body = proc.process_response_body(&parsed).expect("dechunk");
     assert_eq!(body, b"Hello World");
 }
-
-

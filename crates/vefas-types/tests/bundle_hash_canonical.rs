@@ -23,7 +23,8 @@ fn base_bundle() -> VefasCanonicalBundle {
         1,
         200,
         [2u8; 32],
-    ).unwrap()
+    )
+    .unwrap()
 }
 
 #[test]
@@ -76,10 +77,9 @@ fn canonical_hash_changes_on_certificate_chain_order() {
         1,
         200,
         [2u8; 32],
-    ).unwrap();
+    )
+    .unwrap();
 
     // Different order should change hash
     assert_ne!(b1.bundle_hash(), b2.bundle_hash());
 }
-
-

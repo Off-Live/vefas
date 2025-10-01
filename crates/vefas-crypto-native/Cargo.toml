@@ -11,7 +11,7 @@ std = []
 
 [dependencies]
 # Core VEFAS dependencies
-vefas-crypto = { path = "../vefas-crypto" }
+vefas-crypto = { path = "../vefas-crypto", features = ["std"] }
 vefas-types = { path = "../vefas-types" }
 
 # High-performance std-only crypto libraries
@@ -35,7 +35,7 @@ k256 = { version = "0.13", features = ["std", "ecdh", "ecdsa", "arithmetic", "pe
 
 # Digital signatures - std-optimized
 ed25519-dalek = { version = "2.0", features = ["zeroize", "pem"] }
-rsa = { version = "0.9", features = ["std", "pem"] }
+rsa = { version = "0.9", features = ["std", "pem", "sha2"] }
 ecdsa = { version = "0.16", features = ["std", "verifying", "signing", "pem"] }
 
 # Key derivation - std-optimized

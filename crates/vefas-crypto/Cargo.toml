@@ -7,6 +7,7 @@ description = "Cryptographic implementations and trait definitions for VEFAS zkT
 
 [features]
 default = []
+std = []
 
 [dependencies]
 vefas-types = { path = "../vefas-types", default-features = false }

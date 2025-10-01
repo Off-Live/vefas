@@ -74,12 +74,12 @@ pub use vefas_crypto::traits;
 pub use vefas_types;
 
 // Internal modules
-mod provider;
-pub mod hash;
 pub mod aead;
-pub mod key_exchange;
-pub mod signature;
+pub mod hash;
 pub mod kdf;
+pub mod key_exchange;
+mod provider;
+pub mod signature;
 
 // Public API
 pub use provider::NativeCryptoProvider;

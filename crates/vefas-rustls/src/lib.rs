@@ -4,8 +4,8 @@
 
 pub mod provider;
 
-use std::sync::{Arc, Mutex};
 use rustls::crypto::CryptoProvider;
+use std::sync::{Arc, Mutex};
 
 pub type EphemeralCaptureHandle = Arc<Mutex<Option<[u8; 32]>>>;
 
@@ -22,5 +22,3 @@ pub fn new_provider(config: ProviderConfig) -> (CryptoProvider, EphemeralCapture
     let provider = provider::build_capturing_provider(config, Arc::clone(&capture));
     (provider, capture)
 }
-
-

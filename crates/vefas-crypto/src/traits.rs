@@ -17,7 +17,7 @@
 
 use alloc::vec::Vec;
 
-use vefas_types::{VefasResult, VefasError};
+use vefas_types::{VefasError, VefasResult};
 
 // Note: The new trait structure uses standard arrays instead of wrapper types
 // for better performance and cleaner API design following zktls-crypto patterns
@@ -353,7 +353,8 @@ pub trait Signature {
     ///
     /// # Returns
     /// RSA signature
-    fn rsa_pkcs1_sha256_sign(&self, private_key_der: &[u8], message: &[u8]) -> VefasResult<Vec<u8>>;
+    fn rsa_pkcs1_sha256_sign(&self, private_key_der: &[u8], message: &[u8])
+        -> VefasResult<Vec<u8>>;
 
     /// Verify RSA PKCS#1 v1.5 SHA-256 signature
     ///
@@ -364,7 +365,12 @@ pub trait Signature {
     ///
     /// # Returns
     /// `true` if signature is valid
-    fn rsa_pkcs1_sha256_verify(&self, public_key_der: &[u8], message: &[u8], signature: &[u8]) -> bool;
+    fn rsa_pkcs1_sha256_verify(
+        &self,
+        public_key_der: &[u8],
+        message: &[u8],
+        signature: &[u8],
+    ) -> bool;
 
     /// Sign message with RSA PSS SHA-256
     ///
@@ -385,7 +391,12 @@ pub trait Signature {
     ///
     /// # Returns
     /// `true` if signature is valid
-    fn rsa_pss_sha256_verify(&self, public_key_der: &[u8], message: &[u8], signature: &[u8]) -> bool;
+    fn rsa_pss_sha256_verify(
+        &self,
+        public_key_der: &[u8],
+        message: &[u8],
+        signature: &[u8],
+    ) -> bool;
 
     /// Check if this provider has hardware/precompile support for signatures
     fn has_precompile_support(&self) -> bool {
@@ -429,13 +440,7 @@ pub trait Kdf {
     ///
     /// # Returns
     /// Output keying material of requested length
-    fn hkdf(
-        &self,
-        salt: &[u8],
-        ikm: &[u8],
-        info: &[u8],
-        length: usize,
-    ) -> VefasResult<Vec<u8>> {
+    fn hkdf(&self, salt: &[u8], ikm: &[u8], info: &[u8], length: usize) -> VefasResult<Vec<u8>> {
         let prk = self.hkdf_extract(salt, ikm);
         self.hkdf_expand(&prk, info, length)
     }
@@ -493,19 +498,11 @@ pub trait Kdf {
     ) -> VefasResult<([u8; 32], [u8; 32])> {
         let handshake_secret = self.hkdf_extract(&[0u8; 32], shared_secret);
 
-        let client_secret = self.hkdf_expand_label(
-            &handshake_secret,
-            b"c hs traffic",
-            handshake_hash,
-            32,
-        )?;
+        let client_secret =
+            self.hkdf_expand_label(&handshake_secret, b"c hs traffic", handshake_hash, 32)?;
 
-        let server_secret = self.hkdf_expand_label(
-            &handshake_secret,
-            b"s hs traffic",
-            handshake_hash,
-            32,
-        )?;
+        let server_secret =
+            self.hkdf_expand_label(&handshake_secret, b"s hs traffic", handshake_hash, 32)?;
 
         let mut client_array = [0u8; 32];
         let mut server_array = [0u8; 32];
@@ -546,19 +543,11 @@ pub trait Kdf {
             ));
         };
 
-        let client_secret = self.hkdf_expand_label(
-            &master_array,
-            b"c ap traffic",
-            handshake_hash,
-            32,
-        )?;
+        let client_secret =
+            self.hkdf_expand_label(&master_array, b"c ap traffic", handshake_hash, 32)?;
 
-        let server_secret = self.hkdf_expand_label(
-            &master_array,
-            b"s ap traffic",
-            handshake_hash,
-            32,
-        )?;
+        let server_secret =
+            self.hkdf_expand_label(&master_array, b"s ap traffic", handshake_hash, 32)?;
 
         let mut client_array = [0u8; 32];
         let mut server_array = [0u8; 32];
@@ -654,8 +643,11 @@ pub trait PrecompileDetection {
             self.has_ed25519_precompile(),
             self.has_rsa_precompile(),
             self.has_hkdf_precompile(),
-        ].iter().map(|&x| x as u32).sum();
-        
+        ]
+        .iter()
+        .map(|&x| x as u32)
+        .sum();
+
         PrecompileSummary {
             provider_name: "unknown",
             total_operations: 12,
@@ -691,9 +683,7 @@ impl PrecompileSummary {
 /// This trait combines all individual cryptographic traits for convenience.
 /// Implementations should provide comprehensive cryptographic functionality
 /// for TLS 1.3 and related protocols.
-pub trait VefasCrypto:
-    Hash + Aead + KeyExchange + Signature + Kdf + PrecompileDetection
-{
+pub trait VefasCrypto: Hash + Aead + KeyExchange + Signature + Kdf + PrecompileDetection {
     /// Get the name of this cryptographic provider
     fn provider_name(&self) -> &'static str {
         "unknown"
@@ -766,7 +756,7 @@ mod tests {
             if ciphertext.len() < 16 {
                 return Err(VefasError::crypto_error(
                     vefas_types::errors::CryptoErrorType::CipherFailed,
-                    "ciphertext too short"
+                    "ciphertext too short",
                 ));
             }
             Ok(vec![0u8; ciphertext.len() - 16])
@@ -792,7 +782,7 @@ mod tests {
             if ciphertext.len() < 16 {
                 return Err(VefasError::crypto_error(
                     vefas_types::errors::CryptoErrorType::CipherFailed,
-                    "ciphertext too short"
+                    "ciphertext too short",
                 ));
             }
             Ok(vec![0u8; ciphertext.len() - 16])
@@ -818,7 +808,7 @@ mod tests {
             if ciphertext.len() < 16 {
                 return Err(VefasError::crypto_error(
                     vefas_types::errors::CryptoErrorType::CipherFailed,
-                    "ciphertext too short"
+                    "ciphertext too short",
                 ));
             }
             Ok(vec![0u8; ciphertext.len() - 16])
@@ -878,7 +868,12 @@ mod tests {
             Ok(vec![0u8; 64])
         }
 
-        fn secp256k1_verify(&self, _public_key: &[u8; 65], _message: &[u8], _signature: &[u8]) -> bool {
+        fn secp256k1_verify(
+            &self,
+            _public_key: &[u8; 65],
+            _message: &[u8],
+            _signature: &[u8],
+        ) -> bool {
             true
         }
 
@@ -890,7 +885,12 @@ mod tests {
             [0u8; 64]
         }
 
-        fn ed25519_verify(&self, _public_key: &[u8; 32], _message: &[u8], _signature: &[u8; 64]) -> bool {
+        fn ed25519_verify(
+            &self,
+            _public_key: &[u8; 32],
+            _message: &[u8],
+            _signature: &[u8; 64],
+        ) -> bool {
             true
         }
 
@@ -898,19 +898,37 @@ mod tests {
             Ok((vec![0u8; 256], vec![0u8; 256]))
         }
 
-        fn rsa_pkcs1_sha256_sign(&self, _private_key_der: &[u8], _message: &[u8]) -> VefasResult<Vec<u8>> {
+        fn rsa_pkcs1_sha256_sign(
+            &self,
+            _private_key_der: &[u8],
+            _message: &[u8],
+        ) -> VefasResult<Vec<u8>> {
             Ok(vec![0u8; 256])
         }
 
-        fn rsa_pkcs1_sha256_verify(&self, _public_key_der: &[u8], _message: &[u8], _signature: &[u8]) -> bool {
+        fn rsa_pkcs1_sha256_verify(
+            &self,
+            _public_key_der: &[u8],
+            _message: &[u8],
+            _signature: &[u8],
+        ) -> bool {
             true
         }
 
-        fn rsa_pss_sha256_sign(&self, _private_key_der: &[u8], _message: &[u8]) -> VefasResult<Vec<u8>> {
+        fn rsa_pss_sha256_sign(
+            &self,
+            _private_key_der: &[u8],
+            _message: &[u8],
+        ) -> VefasResult<Vec<u8>> {
             Ok(vec![0u8; 256])
         }
 
-        fn rsa_pss_sha256_verify(&self, _public_key_der: &[u8], _message: &[u8], _signature: &[u8]) -> bool {
+        fn rsa_pss_sha256_verify(
+            &self,
+            _public_key_der: &[u8],
+            _message: &[u8],
+            _signature: &[u8],
+        ) -> bool {
             true
         }
     }
@@ -920,7 +938,12 @@ mod tests {
             [0u8; 32]
         }
 
-        fn hkdf_expand(&self, _prk: &[u8; 32], _info: &[u8], length: usize) -> VefasResult<Vec<u8>> {
+        fn hkdf_expand(
+            &self,
+            _prk: &[u8; 32],
+            _info: &[u8],
+            length: usize,
+        ) -> VefasResult<Vec<u8>> {
             Ok(vec![0u8; length])
         }
     }
@@ -966,24 +989,36 @@ mod tests {
         let nonce = [0u8; 12];
 
         // AES-128-GCM
-        let ciphertext_128 = crypto.aes_128_gcm_encrypt(&key_128, &nonce, b"", plaintext).unwrap();
+        let ciphertext_128 = crypto
+            .aes_128_gcm_encrypt(&key_128, &nonce, b"", plaintext)
+            .unwrap();
         assert!(ciphertext_128.len() >= plaintext.len() + 16);
 
-        let decrypted_128 = crypto.aes_128_gcm_decrypt(&key_128, &nonce, b"", &ciphertext_128).unwrap();
+        let decrypted_128 = crypto
+            .aes_128_gcm_decrypt(&key_128, &nonce, b"", &ciphertext_128)
+            .unwrap();
         assert_eq!(decrypted_128.len(), plaintext.len());
 
         // AES-256-GCM
-        let ciphertext_256 = crypto.aes_256_gcm_encrypt(&key_256, &nonce, b"", plaintext).unwrap();
+        let ciphertext_256 = crypto
+            .aes_256_gcm_encrypt(&key_256, &nonce, b"", plaintext)
+            .unwrap();
         assert!(ciphertext_256.len() >= plaintext.len() + 16);
 
-        let decrypted_256 = crypto.aes_256_gcm_decrypt(&key_256, &nonce, b"", &ciphertext_256).unwrap();
+        let decrypted_256 = crypto
+            .aes_256_gcm_decrypt(&key_256, &nonce, b"", &ciphertext_256)
+            .unwrap();
         assert_eq!(decrypted_256.len(), plaintext.len());
 
         // ChaCha20Poly1305
-        let ciphertext_chacha = crypto.chacha20_poly1305_encrypt(&key_256, &nonce, b"", plaintext).unwrap();
+        let ciphertext_chacha = crypto
+            .chacha20_poly1305_encrypt(&key_256, &nonce, b"", plaintext)
+            .unwrap();
         assert!(ciphertext_chacha.len() >= plaintext.len() + 16);
 
-        let decrypted_chacha = crypto.chacha20_poly1305_decrypt(&key_256, &nonce, b"", &ciphertext_chacha).unwrap();
+        let decrypted_chacha = crypto
+            .chacha20_poly1305_decrypt(&key_256, &nonce, b"", &ciphertext_chacha)
+            .unwrap();
         assert_eq!(decrypted_chacha.len(), plaintext.len());
     }
 
@@ -996,7 +1031,9 @@ mod tests {
         assert_eq!(x25519_private.len(), 32);
         assert_eq!(x25519_public.len(), 32);
 
-        let x25519_shared = crypto.x25519_compute_shared_secret(&x25519_private, &x25519_public).unwrap();
+        let x25519_shared = crypto
+            .x25519_compute_shared_secret(&x25519_private, &x25519_public)
+            .unwrap();
         assert_eq!(x25519_shared.len(), 32);
 
         // P-256
@@ -1005,7 +1042,9 @@ mod tests {
         assert_eq!(p256_public.len(), 65);
         assert_eq!(p256_public[0], 0x04); // Uncompressed point marker
 
-        let p256_shared = crypto.p256_compute_shared_secret(&p256_private, &p256_public).unwrap();
+        let p256_shared = crypto
+            .p256_compute_shared_secret(&p256_private, &p256_public)
+            .unwrap();
         assert_eq!(p256_shared.len(), 32);
     }
 
@@ -1054,10 +1093,14 @@ mod tests {
         let combined = crypto.hkdf(salt, ikm, info, 64).unwrap();
         assert_eq!(combined.len(), 64);
 
-        let tls13_secret = crypto.hkdf_expand_label(&prk, b"c hs traffic", &[0u8; 32], 32).unwrap();
+        let tls13_secret = crypto
+            .hkdf_expand_label(&prk, b"c hs traffic", &[0u8; 32], 32)
+            .unwrap();
         assert_eq!(tls13_secret.len(), 32);
 
-        let (client_hs, server_hs) = crypto.derive_handshake_secrets(&[0u8; 32], &[0u8; 32]).unwrap();
+        let (client_hs, server_hs) = crypto
+            .derive_handshake_secrets(&[0u8; 32], &[0u8; 32])
+            .unwrap();
         assert_eq!(client_hs.len(), 32);
         assert_eq!(server_hs.len(), 32);
 

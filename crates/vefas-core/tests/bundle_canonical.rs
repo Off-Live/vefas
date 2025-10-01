@@ -1,11 +1,4 @@
-use vefas_core::{
-    BundleBuilder,
-    SessionData,
-    HttpData,
-    VefasKeyLog,
-    TlsRecord,
-    ContentType,
-};
+use vefas_core::{BundleBuilder, ContentType, HttpData, SessionData, TlsRecord, VefasKeyLog};
 
 // Helpers to craft minimal TLS records and handshake messages
 fn tls_record(content_type: u8, version: [u8; 2], payload: &[u8]) -> Vec<u8> {
@@ -34,7 +27,7 @@ fn hello_payload(random: [u8; 32]) -> Vec<u8> {
     p.extend_from_slice(&[0x03, 0x03]);
     p.extend_from_slice(&random);
     p.push(0); // session_id_len
-    // keep minimal; parser only needs first 34 bytes for random in current impl
+               // keep minimal; parser only needs first 34 bytes for random in current impl
     p
 }
 
@@ -55,12 +48,14 @@ fn certificate_message_single_der(der: &[u8]) -> Vec<u8> {
     p
 }
 
-fn minimal_cert_der() -> Vec<u8> { vec![0x30, 0x82, 0x01, 0x00, 0x30, 0x81, 0xed] }
+fn minimal_cert_der() -> Vec<u8> {
+    vec![0x30, 0x82, 0x01, 0x00, 0x30, 0x81, 0xed]
+}
 
 fn make_session_data(outbound: Vec<u8>, inbound: Vec<u8>) -> SessionData {
-    use rustls::pki_types::CertificateDer;
-    use rustls::{ProtocolVersion};
     use rustls::crypto::aws_lc_rs::cipher_suite;
+    use rustls::pki_types::CertificateDer;
+    use rustls::ProtocolVersion;
 
     SessionData {
         outbound_bytes: outbound,
@@ -88,7 +83,9 @@ fn default_http_data() -> HttpData {
     }
 }
 
-fn default_keylog() -> VefasKeyLog { VefasKeyLog::new() }
+fn default_keylog() -> VefasKeyLog {
+    VefasKeyLog::new()
+}
 
 #[test]
 fn produces_tls_ciphertext_for_encrypted_fields() {
@@ -99,8 +96,16 @@ fn produces_tls_ciphertext_for_encrypted_fields() {
     let sh_rec = tls_record(ContentType::Handshake as u8, [0x03, 0x03], &sh);
 
     // Simulate application data TLSCiphertext for request/response
-    let app_req = tls_record(ContentType::ApplicationData as u8, [0x03, 0x03], b"cipher_req");
-    let app_resp = tls_record(ContentType::ApplicationData as u8, [0x03, 0x03], b"cipher_resp");
+    let app_req = tls_record(
+        ContentType::ApplicationData as u8,
+        [0x03, 0x03],
+        b"cipher_req",
+    );
+    let app_resp = tls_record(
+        ContentType::ApplicationData as u8,
+        [0x03, 0x03],
+        b"cipher_resp",
+    );
 
     let outbound = [ch_rec.clone(), app_req.clone()].concat();
     let inbound = [sh_rec.clone(), app_resp.clone()].concat();
@@ -110,11 +115,21 @@ fn produces_tls_ciphertext_for_encrypted_fields() {
     let keylog = default_keylog();
 
     let mut builder = BundleBuilder::new();
-    let bundle = builder.from_session_data(&session, &http, &keylog).expect("bundle creation");
+    let bundle = builder
+        .from_session_data(&session, &http, &keylog)
+        .expect("bundle creation");
 
     // Expect TLSCiphertext (0x17) for encrypted fields; current implementation wrongly uses plaintext
-    assert_eq!(bundle.encrypted_request().unwrap()[0], 0x17, "encrypted_request must be TLSCiphertext (type=0x17)");
-    assert_eq!(bundle.encrypted_response().unwrap()[0], 0x17, "encrypted_response must be TLSCiphertext (type=0x17)");
+    assert_eq!(
+        bundle.encrypted_request().unwrap()[0],
+        0x17,
+        "encrypted_request must be TLSCiphertext (type=0x17)"
+    );
+    assert_eq!(
+        bundle.encrypted_response().unwrap()[0],
+        0x17,
+        "encrypted_response must be TLSCiphertext (type=0x17)"
+    );
 }
 
 #[test]
@@ -130,23 +145,41 @@ fn uses_server_finished_message() {
         tls_record(22, [0x03, 0x03], &ch),
         tls_record(22, [0x03, 0x03], &fin_client),
         // Include minimal ApplicationData to satisfy ciphertext extraction
-        tls_record(ContentType::ApplicationData as u8, [0x03, 0x03], b"cipher_req"),
-    ].concat();
+        tls_record(
+            ContentType::ApplicationData as u8,
+            [0x03, 0x03],
+            b"cipher_req",
+        ),
+    ]
+    .concat();
     let inbound = [
         tls_record(22, [0x03, 0x03], &sh),
         tls_record(22, [0x03, 0x03], &fin_server),
         // Include minimal ApplicationData records to satisfy ciphertext extraction
-        tls_record(ContentType::ApplicationData as u8, [0x03, 0x03], b"cipher_resp"),
-    ].concat();
+        tls_record(
+            ContentType::ApplicationData as u8,
+            [0x03, 0x03],
+            b"cipher_resp",
+        ),
+    ]
+    .concat();
 
     let session = make_session_data(outbound, inbound);
     let http = default_http_data();
     let keylog = default_keylog();
 
     let mut builder = BundleBuilder::new();
-    let bundle = builder.from_session_data(&session, &http, &keylog).expect("bundle creation");
+    let bundle = builder
+        .from_session_data(&session, &http, &keylog)
+        .expect("bundle creation");
 
-    assert!(bundle.server_finished_msg().unwrap().ends_with(b"server_finished"), "must select server Finished message");
+    assert!(
+        bundle
+            .server_finished_msg()
+            .unwrap()
+            .ends_with(b"server_finished"),
+        "must select server Finished message"
+    );
 }
 
 #[test]
@@ -173,7 +206,8 @@ fn preserves_wire_exact_handshake_messages_across_fragments() {
     let result = builder.from_session_data(&session, &http, &keylog);
 
     // Expect failure until reassembly is implemented (current code errors on incomplete)
-    assert!(result.is_err(), "should fail without handshake reassembly across records");
+    assert!(
+        result.is_err(),
+        "should fail without handshake reassembly across records"
+    );
 }
-
-

@@ -24,11 +24,11 @@
 //! - Deterministic compression ensures consistent proof generation
 
 extern crate alloc;
-use alloc::{vec::Vec, vec, format};
+use alloc::{format, vec, vec::Vec};
 use core::mem::size_of;
 
 use lzss::{Lzss, SliceReader, SliceWriter};
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 use crate::{VefasError, VefasResult};
 
@@ -78,9 +78,9 @@ pub struct CompressionParameters {
 impl Default for CompressionParameters {
     fn default() -> Self {
         Self {
-            window_bits: 12,  // 4KB window
-            match_bits: 4,    // 16 byte max match
-            character: 0x20,  // space character
+            window_bits: 12, // 4KB window
+            match_bits: 4,   // 16 byte max match
+            character: 0x20, // space character
         }
     }
 }
@@ -94,7 +94,7 @@ impl CompressedBundle {
         parameters: CompressionParameters,
     ) -> Self {
         Self {
-            version: 1,  // Current compression format version
+            version: 1, // Current compression format version
             original_size,
             compressed_data,
             algorithm,
@@ -112,7 +112,8 @@ impl CompressedBundle {
 
     /// Get space saved in bytes
     pub fn space_saved(&self) -> u32 {
-        self.original_size.saturating_sub(self.compressed_data.len() as u32)
+        self.original_size
+            .saturating_sub(self.compressed_data.len() as u32)
     }
 
     /// Validate compressed bundle structure
@@ -199,11 +200,12 @@ impl BundleCompressor {
         let reader = SliceReader::new(data);
         let writer = SliceWriter::new(&mut output);
 
-        let compressed_size = TlsLzss::compress_stack(reader, writer)
-            .map_err(|_| VefasError::crypto_error(
+        let compressed_size = TlsLzss::compress_stack(reader, writer).map_err(|_| {
+            VefasError::crypto_error(
                 crate::errors::CryptoErrorType::CipherFailed,
                 "LZSS compression failed",
-            ))?;
+            )
+        })?;
 
         // Truncate output to actual compressed size
         output.truncate(compressed_size);
@@ -239,11 +241,13 @@ impl BundleCompressor {
                 let reader = SliceReader::new(&compressed.compressed_data);
                 let writer = SliceWriter::new(&mut output);
 
-                let decompressed_size = TlsLzss::decompress_stack(reader, writer)
-                    .map_err(|_| VefasError::crypto_error(
-                        crate::errors::CryptoErrorType::CipherFailed,
-                        "LZSS decompression failed",
-                    ))?;
+                let decompressed_size =
+                    TlsLzss::decompress_stack(reader, writer).map_err(|_| {
+                        VefasError::crypto_error(
+                            crate::errors::CryptoErrorType::CipherFailed,
+                            "LZSS decompression failed",
+                        )
+                    })?;
 
                 // Verify decompressed size matches expected
                 if decompressed_size != compressed.original_size as usize {
@@ -251,8 +255,7 @@ impl BundleCompressor {
                         crate::errors::CryptoErrorType::CipherFailed,
                         &format!(
                             "Decompressed size mismatch: expected {}, got {}",
-                            compressed.original_size,
-                            decompressed_size
+                            compressed.original_size, decompressed_size
                         ),
                     ));
                 }
@@ -281,7 +284,7 @@ impl BundleCompressor {
             byte_counts[byte as usize] += 1;
 
             // Check for adjacent byte repetitions (simple pattern detection)
-            if i > 0 && data[i-1] == byte {
+            if i > 0 && data[i - 1] == byte {
                 repetition_score += 1;
             }
         }
@@ -313,11 +316,12 @@ impl BundleCompressor {
         // Combine factors to estimate compression ratio
         // Start with baseline 75% and adjust based on factors
         let base_ratio = 75.0;
-        let diversity_penalty = diversity_factor * 20.0;  // More diverse = worse compression
-        let concentration_bonus = concentration_factor * 25.0;  // More concentrated = better
-        let repetition_bonus = repetition_factor * 30.0;  // More repetition = better
+        let diversity_penalty = diversity_factor * 20.0; // More diverse = worse compression
+        let concentration_bonus = concentration_factor * 25.0; // More concentrated = better
+        let repetition_bonus = repetition_factor * 30.0; // More repetition = better
 
-        let estimated_ratio = base_ratio + diversity_penalty - concentration_bonus - repetition_bonus;
+        let estimated_ratio =
+            base_ratio + diversity_penalty - concentration_bonus - repetition_bonus;
         estimated_ratio.max(20.0).min(95.0) // Clamp to reasonable bounds
     }
 
