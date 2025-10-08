@@ -1,0 +1,43 @@
+[package]
+name = "vefas-crypto"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+description = "Cryptographic implementations and trait definitions for VEFAS zkTLS verification"
+
+[features]
+default = []
+std = []
+
+[dependencies]
+vefas-types = { path = "../vefas-types", default-features = false }
+
+# Serialization (no_std compatible)
+serde = { version = "1.0", default-features = false, features = ["derive", "alloc"] }
+serde-json-core = { version = "0.6", default-features = false }
+bincode = { version = "1.3", default-features = false }
+
+# Cryptographic dependencies (no_std compatible)
+hkdf = { version = "0.12", default-features = false }
+sha2 = { version = "0.10", default-features = false }
+hmac = { version = "0.12", default-features = false }
+hex = { version = "0.4", default-features = false, features = ["alloc"] }
+
+# X.509 certificate parsing (no_std compatible)
+x509-cert = { version = "0.2", default-features = false }
+const-oid = { version = "0.9", default-features = false }
+spki = { version = "0.7", default-features = false }
+
+# TLS parsing (robust no_std parsing with tls-parser/Rusticata)
+tls-parser = { version = "0.11", default-features = false }
+
+[dev-dependencies]
+rstest = "0.26.1"
+proptest = "1.0"
+hex-literal = "1.0.0"
+serde_json = "1.0"  # For test files only
+bincode = "1.3"  # For Merkle proof serialization tests
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]

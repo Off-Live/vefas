@@ -1,0 +1,13 @@
+[toolchain]
+# Use nightly for Rust edition 2024 and latest zkVM features
+channel = "nightly"
+components = ["rustfmt", "clippy", "rust-src"]
+targets = [
+    # RISC-V target for zkVM guest program compilation
+    "riscv32im-unknown-none-elf",
+    # Standard targets for host programs
+    "x86_64-unknown-linux-gnu",
+    "x86_64-apple-darwin",
+    "aarch64-apple-darwin"
+]
+profile = "minimal"

@@ -1,0 +1,94 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  test:
+    name: Test Suite
+    runs-on: ubuntu-latest
+    
+    strategy:
+      matrix:
+        feature: [sp1, risc0]
+    
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+    
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@nightly
+      with:
+        components: rustfmt, clippy, rust-src
+        targets: riscv32im-unknown-none-elf
+    
+    - name: Cache cargo dependencies
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cargo/bin/
+          ~/.cargo/registry/index/
+          ~/.cargo/registry/cache/
+          ~/.cargo/git/db/
+          target/
+        key: ${{ runner.os }}-cargo-${{ matrix.feature }}-${{ hashFiles('**/Cargo.lock') }}
+    
+    - name: Check workspace compilation with ${{ matrix.feature }} feature
+      run: cargo check --workspace --features ${{ matrix.feature }}
+    
+    - name: Run tests with ${{ matrix.feature }} feature
+      run: cargo test --workspace --features ${{ matrix.feature }}
+    
+    - name: Test xtask commands
+      run: |
+        cargo xtask test
+        cargo xtask prove
+
+  lint:
+    name: Linting
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+    
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@nightly
+      with:
+        components: rustfmt, clippy
+    
+    - name: Check formatting
+      run: cargo fmt -- --check
+    
+    - name: Run clippy (SP1)
+      run: cargo clippy --workspace --features sp1 -- -D warnings
+    
+    - name: Run clippy (RISC0)  
+      run: cargo clippy --workspace --features risc0 -- -D warnings
+
+  build:
+    name: Build
+    runs-on: ${{ matrix.os }}
+    
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        feature: [sp1, risc0]
+    
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+    
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@nightly
+      with:
+        targets: riscv32im-unknown-none-elf
+    
+    - name: Build with ${{ matrix.feature }} feature
+      run: cargo build --workspace --features ${{ matrix.feature }}

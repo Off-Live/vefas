@@ -1,0 +1,299 @@
+{
+  "tls13_test_vectors": {
+    "description": "TLS 1.3 Test Vectors covering all cipher suites and certificate algorithms",
+    "version": "1.0",
+    "rfc_reference": "RFC 8446",
+    "test_cases": [
+      {
+        "test_id": "tls13_rsa2048_aes128gcm",
+        "description": "TLS 1.3 with RSA 2048 certificate and AES-128-GCM cipher suite",
+        "certificate_type": "RSA",
+        "certificate_file": "rsa2048.crt",
+        "private_key_file": "rsa2048.key",
+        "cipher_suite": "TLS_AES_128_GCM_SHA256",
+        "tls_version": "TLS 1.3",
+        "key_exchange": "ECDHE",
+        "authentication": "RSA",
+        "encryption": "AES-128-GCM",
+        "mac": "SHA256",
+        "expected_result": "success",
+        "priority": "high",
+        "notes": "Most common TLS 1.3 configuration in production"
+      },
+      {
+        "test_id": "tls13_rsa2048_aes256gcm",
+        "description": "TLS 1.3 with RSA 2048 certificate and AES-256-GCM cipher suite",
+        "certificate_type": "RSA",
+        "certificate_file": "rsa2048.crt",
+        "private_key_file": "rsa2048.key",
+        "cipher_suite": "TLS_AES_256_GCM_SHA384",
+        "tls_version": "TLS 1.3",
+        "key_exchange": "ECDHE",
+        "authentication": "RSA",
+        "encryption": "AES-256-GCM",
+        "mac": "SHA384",
+        "expected_result": "success",
+        "priority": "high",
+        "notes": "High security TLS 1.3 configuration"
+      },
+      {
+        "test_id": "tls13_rsa2048_chacha20",
+        "description": "TLS 1.3 with RSA 2048 certificate and ChaCha20-Poly1305 cipher suite",
+        "certificate_type": "RSA",
+        "certificate_file": "rsa2048.crt",
+        "private_key_file": "rsa2048.key",
+        "cipher_suite": "TLS_CHACHA20_POLY1305_SHA256",
+        "tls_version": "TLS 1.3",
+        "key_exchange": "ECDHE",
+        "authentication": "RSA",
+        "encryption": "ChaCha20-Poly1305",
+        "mac": "SHA256",
+        "expected_result": "success",
+        "priority": "high",
+        "notes": "Fast encryption with RSA authentication"
+      },
+      {
+        "test_id": "tls13_rsa4096_aes128gcm",
+        "description": "TLS 1.3 with RSA 4096 certificate and AES-128-GCM cipher suite",
+        "certificate_type": "RSA",
+        "certificate_file": "rsa4096.crt",
+        "private_key_file": "rsa4096.key",
+        "cipher_suite": "TLS_AES_128_GCM_SHA256",
+        "tls_version": "TLS 1.3",
+        "key_exchange": "ECDHE",
+        "authentication": "RSA",
+        "encryption": "AES-128-GCM",
+        "mac": "SHA256",
+        "expected_result": "success",
+        "priority": "medium",
+        "notes": "High security RSA with standard encryption"
+      },
+      {
+        "test_id": "tls13_ecdsa_p256_aes128gcm",
+        "description": "TLS 1.3 with ECDSA P-256 certificate and AES-128-GCM cipher suite",
+        "certificate_type": "ECDSA",
+        "certificate_file": "ecdsa_p256.crt",
+        "private_key_file": "ecdsa_p256.key",
+        "cipher_suite": "TLS_AES_128_GCM_SHA256",
+        "tls_version": "TLS 1.3",
+        "key_exchange": "ECDHE",
+        "authentication": "ECDSA",
+        "encryption": "AES-128-GCM",
+        "mac": "SHA256",
+        "expected_result": "success",
+        "priority": "high",
+        "notes": "Modern elliptic curve authentication"
+      },
+      {
+        "test_id": "tls13_ecdsa_p256_aes256gcm",
+        "description": "TLS 1.3 with ECDSA P-256 certificate and AES-256-GCM cipher suite",
+        "certificate_type": "ECDSA",
+        "certificate_file": "ecdsa_p256.crt",
+        "private_key_file": "ecdsa_p256.key",
+        "cipher_suite": "TLS_AES_256_GCM_SHA384",
+        "tls_version": "TLS 1.3",
+        "key_exchange": "ECDHE",
+        "authentication": "ECDSA",
+        "encryption": "AES-256-GCM",
+        "mac": "SHA384",
+        "expected_result": "success",
+        "priority": "high",
+        "notes": "ECDSA with high security encryption"
+      },
+      {
+        "test_id": "tls13_ecdsa_p256_chacha20",
+        "description": "TLS 1.3 with ECDSA P-256 certificate and ChaCha20-Poly1305 cipher suite",
+        "certificate_type": "ECDSA",
+        "certificate_file": "ecdsa_p256.crt",
+        "private_key_file": "ecdsa_p256.key",
+        "cipher_suite": "TLS_CHACHA20_POLY1305_SHA256",
+        "tls_version": "TLS 1.3",
+        "key_exchange": "ECDHE",
+        "authentication": "ECDSA",
+        "encryption": "ChaCha20-Poly1305",
+        "mac": "SHA256",
+        "expected_result": "success",
+        "priority": "high",
+        "notes": "Modern ECDSA with fast encryption"
+      },
+      {
+        "test_id": "tls13_ecdsa_p384_aes128gcm",
+        "description": "TLS 1.3 with ECDSA P-384 certificate and AES-128-GCM cipher suite",
+        "certificate_type": "ECDSA",
+        "certificate_file": "ecdsa_p384.crt",
+        "private_key_file": "ecdsa_p384.key",
+        "cipher_suite": "TLS_AES_128_GCM_SHA256",
+        "tls_version": "TLS 1.3",
+        "key_exchange": "ECDHE",
+        "authentication": "ECDSA",
+        "encryption": "AES-128-GCM",
+        "mac": "SHA256",
+        "expected_result": "success",
+        "priority": "medium",
+        "notes": "Higher security ECDSA curve"
+      },
+      {
+        "test_id": "tls13_ecdsa_p384_aes256gcm",
+        "description": "TLS 1.3 with ECDSA P-384 certificate and AES-256-GCM cipher suite",
+        "certificate_type": "ECDSA",
+        "certificate_file": "ecdsa_p384.crt",
+        "private_key_file": "ecdsa_p384.key",
+        "cipher_suite": "TLS_AES_256_GCM_SHA384",
+        "tls_version": "TLS 1.3",
+        "key_exchange": "ECDHE",
+        "authentication": "ECDSA",
+        "encryption": "AES-256-GCM",
+        "mac": "SHA384",
+        "expected_result": "success",
+        "priority": "medium",
+        "notes": "High security ECDSA with matching encryption strength"
+      },
+      {
+        "test_id": "tls13_ed25519_aes128gcm",
+        "description": "TLS 1.3 with Ed25519 certificate and AES-128-GCM cipher suite",
+        "certificate_type": "Ed25519",
+        "certificate_file": "ed25519.crt",
+        "private_key_file": "ed25519.key",
+        "cipher_suite": "TLS_AES_128_GCM_SHA256",
+        "tls_version": "TLS 1.3",
+        "key_exchange": "ECDHE",
+        "authentication": "Ed25519",
+        "encryption": "AES-128-GCM",
+        "mac": "SHA256",
+        "expected_result": "success",
+        "priority": "high",
+        "notes": "Modern post-quantum resistant signature algorithm"
+      },
+      {
+        "test_id": "tls13_ed25519_chacha20",
+        "description": "TLS 1.3 with Ed25519 certificate and ChaCha20-Poly1305 cipher suite",
+        "certificate_type": "Ed25519",
+        "certificate_file": "ed25519.crt",
+        "private_key_file": "ed25519.key",
+        "cipher_suite": "TLS_CHACHA20_POLY1305_SHA256",
+        "tls_version": "TLS 1.3",
+        "key_exchange": "ECDHE",
+        "authentication": "Ed25519",
+        "encryption": "ChaCha20-Poly1305",
+        "mac": "SHA256",
+        "expected_result": "success",
+        "priority": "high",
+        "notes": "Modern signature with fast encryption"
+      },
+      {
+        "test_id": "tls13_rsa2048_aes128ccm",
+        "description": "TLS 1.3 with RSA 2048 certificate and AES-128-CCM cipher suite",
+        "certificate_type": "RSA",
+        "certificate_file": "rsa2048.crt",
+        "private_key_file": "rsa2048.key",
+        "cipher_suite": "TLS_AES_128_CCM_SHA256",
+        "tls_version": "TLS 1.3",
+        "key_exchange": "ECDHE",
+        "authentication": "RSA",
+        "encryption": "AES-128-CCM",
+        "mac": "SHA256",
+        "expected_result": "success",
+        "priority": "low",
+        "notes": "IoT/constrained device cipher suite"
+      },
+      {
+        "test_id": "tls13_rsa2048_aes128ccm8",
+        "description": "TLS 1.3 with RSA 2048 certificate and AES-128-CCM-8 cipher suite",
+        "certificate_type": "RSA",
+        "certificate_file": "rsa2048.crt",
+        "private_key_file": "rsa2048.key",
+        "cipher_suite": "TLS_AES_128_CCM_8_SHA256",
+        "tls_version": "TLS 1.3",
+        "key_exchange": "ECDHE",
+        "authentication": "RSA",
+        "encryption": "AES-128-CCM-8",
+        "mac": "SHA256",
+        "expected_result": "success",
+        "priority": "low",
+        "notes": "IoT/constrained device cipher suite with shorter auth tag"
+      },
+      {
+        "test_id": "tls13_ecdsa_p256_aes128ccm",
+        "description": "TLS 1.3 with ECDSA P-256 certificate and AES-128-CCM cipher suite",
+        "certificate_type": "ECDSA",
+        "certificate_file": "ecdsa_p256.crt",
+        "private_key_file": "ecdsa_p256.key",
+        "cipher_suite": "TLS_AES_128_CCM_SHA256",
+        "tls_version": "TLS 1.3",
+        "key_exchange": "ECDHE",
+        "authentication": "ECDSA",
+        "encryption": "AES-128-CCM",
+        "mac": "SHA256",
+        "expected_result": "success",
+        "priority": "low",
+        "notes": "ECDSA with IoT cipher suite"
+      },
+      {
+        "test_id": "tls13_legacy_rsa1024_aes128gcm",
+        "description": "TLS 1.3 with legacy RSA 1024 certificate and AES-128-GCM cipher suite",
+        "certificate_type": "RSA",
+        "certificate_file": "rsa1024.crt",
+        "private_key_file": "rsa1024.key",
+        "cipher_suite": "TLS_AES_128_GCM_SHA256",
+        "tls_version": "TLS 1.3",
+        "key_exchange": "ECDHE",
+        "authentication": "RSA",
+        "encryption": "AES-128-GCM",
+        "mac": "SHA256",
+        "expected_result": "warning",
+        "priority": "low",
+        "notes": "Legacy weak key - should trigger security warnings"
+      }
+    ],
+    "cipher_suite_coverage": {
+      "TLS_AES_128_GCM_SHA256": {
+        "description": "Most common TLS 1.3 cipher suite",
+        "test_cases": 6,
+        "certificate_types": ["RSA", "ECDSA", "Ed25519"]
+      },
+      "TLS_AES_256_GCM_SHA384": {
+        "description": "High security TLS 1.3 cipher suite",
+        "test_cases": 3,
+        "certificate_types": ["RSA", "ECDSA"]
+      },
+      "TLS_CHACHA20_POLY1305_SHA256": {
+        "description": "Fast encryption TLS 1.3 cipher suite",
+        "test_cases": 3,
+        "certificate_types": ["RSA", "ECDSA", "Ed25519"]
+      },
+      "TLS_AES_128_CCM_SHA256": {
+        "description": "IoT/constrained device cipher suite",
+        "test_cases": 2,
+        "certificate_types": ["RSA", "ECDSA"]
+      },
+      "TLS_AES_128_CCM_8_SHA256": {
+        "description": "IoT/constrained device cipher suite with shorter auth tag",
+        "test_cases": 1,
+        "certificate_types": ["RSA"]
+      }
+    },
+    "certificate_algorithm_coverage": {
+      "RSA": {
+        "key_sizes": [1024, 2048, 4096],
+        "test_cases": 6,
+        "cipher_suites": ["TLS_AES_128_GCM_SHA256", "TLS_AES_256_GCM_SHA384", "TLS_CHACHA20_POLY1305_SHA256", "TLS_AES_128_CCM_SHA256", "TLS_AES_128_CCM_8_SHA256"]
+      },
+      "ECDSA": {
+        "curves": ["P-256", "P-384", "P-521"],
+        "test_cases": 5,
+        "cipher_suites": ["TLS_AES_128_GCM_SHA256", "TLS_AES_256_GCM_SHA384", "TLS_CHACHA20_POLY1305_SHA256", "TLS_AES_128_CCM_SHA256"]
+      },
+      "Ed25519": {
+        "key_size": 256,
+        "test_cases": 2,
+        "cipher_suites": ["TLS_AES_128_GCM_SHA256", "TLS_CHACHA20_POLY1305_SHA256"]
+      }
+    },
+    "testing_instructions": {
+      "server_setup": "Use OpenSSL s_server with -tls1_3 and -ciphersuites flags",
+      "client_testing": "Use OpenSSL s_client with -tls1_3 and -ciphersuites flags",
+      "verification": "Check negotiated cipher suite and certificate chain",
+      "proof_generation": "Capture handshake data for Vefas proof generation"
+    }
+  }
+}

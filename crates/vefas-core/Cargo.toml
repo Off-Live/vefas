@@ -1,0 +1,74 @@
+[package]
+name = "vefas-core"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+description = "Unified VEFAS HTTP/TLS client with rustls + aws-lc-rs for zkTLS verification"
+
+[dependencies]
+# Core rustls dependencies with aws-lc-rs (std only)
+rustls = { version = "0.23", default-features = false, features = ["tls12", "aws_lc_rs"] }
+webpki = { version = "0.22", default-features = false, features = ["alloc"] }
+webpki-roots = { version = "1.0", default-features = false }
+
+# VEFAS types
+vefas-types = { path = "../vefas-types", default-features = false }
+vefas-rustls = { path = "../vefas-rustls" }
+vefas-crypto = { path = "../vefas-crypto", default-features = false }
+vefas-crypto-native = { path = "../vefas-crypto-native", default-features = false }
+
+# Async runtime and networking (std feature only)
+tokio = { version = "1.47", default-features = false, features = ["net", "io-util", "rt"], optional = true }
+tokio-rustls = { version = "0.26", default-features = false, optional = true }
+
+# HTTP parsing and processing
+httparse = { version = "1.8", default-features = false }
+url = { version = "2.5", default-features = false }
+
+# TLS parsing (for robust handshake message parsing)
+tls-parser = { version = "0.11", default-features = false }
+
+# Content encoding support (std feature only)
+flate2 = { version = "1.0", default-features = false, features = ["rust_backend"], optional = true }
+brotli = { version = "8.0", default-features = false, features = ["std"], optional = true }
+
+# Serialization
+serde = { version = "1.0", default-features = false, features = ["derive", "alloc"] }
+serde_json = { version = "1.0", default-features = false, features = ["alloc"] }
+
+# Error handling
+thiserror = { version = "2.0", default-features = false }
+
+# Cryptographic utilities
+hkdf = { version = "0.12", default-features = false }
+sha2 = { version = "0.10", default-features = false }
+hmac = { version = "0.12", default-features = false }
+aes-gcm = { version = "0.10", default-features = false, features = ["aes"] }
+x25519-dalek = { version = "2.0", default-features = false }
+
+# Memory utilities
+zeroize = { version = "1.8", default-features = false, features = ["alloc"] }
+
+# Testing
+hex = { version = "0.4", default-features = false, features = ["alloc"] }
+hex-literal = "1.0"
+
+[dev-dependencies]
+# Additional test dependencies
+tokio = { version = "1.47", features = ["macros", "rt-multi-thread"] }
+tokio-test = "0.4"
+proptest = "1.0"
+futures = "0.3"
+
+[features]
+default = ["std"]
+std = ["rustls/std", "webpki/std", "tokio", "tokio-rustls", "flate2", "brotli"]
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
+# Enforce no_std compilation by default
+[lib]
+name = "vefas_core"
+path = "src/lib.rs"

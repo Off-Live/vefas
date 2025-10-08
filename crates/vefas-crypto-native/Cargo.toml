@@ -1,0 +1,88 @@
+[package]
+name = "vefas-crypto-native"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+description = "Native host-side cryptographic implementation for VEFAS - std-only with heavy dependencies"
+
+[features]
+default = ["std"]
+std = []
+
+[dependencies]
+# Core VEFAS dependencies
+vefas-crypto = { path = "../vefas-crypto", features = ["std"] }
+vefas-types = { path = "../vefas-types" }
+
+# High-performance std-only crypto libraries
+ring = "0.17"
+openssl = { version = "0.10", features = ["vendored"] }
+rustls = { version = "0.23", features = ["std", "ring", "tls12"] }
+
+# Hash functions - std-optimized
+sha2 = { version = "0.10", features = ["std", "asm"] }
+hmac = { version = "0.12", features = ["std"] }
+blake3 = { version = "1.8", features = ["std"] }
+
+# Symmetric encryption - std-optimized
+aes-gcm = { version = "0.10", features = ["std", "aes"] }
+chacha20poly1305 = { version = "0.10", features = ["std"] }
+
+# Key exchange - std-optimized
+x25519-dalek = { version = "2.0", features = ["zeroize", "static_secrets"] }
+p256 = { version = "0.13", features = ["std", "ecdh", "ecdsa", "arithmetic", "pem"] }
+k256 = { version = "0.13", features = ["std", "ecdh", "ecdsa", "arithmetic", "pem"] }
+
+# Digital signatures - std-optimized
+ed25519-dalek = { version = "2.0", features = ["zeroize", "pem"] }
+rsa = { version = "0.9", features = ["std", "pem", "sha2"] }
+ecdsa = { version = "0.16", features = ["std", "verifying", "signing", "pem"] }
+
+# Key derivation - std-optimized
+hkdf = { version = "0.12", features = ["std"] }
+argon2 = "0.5"
+
+# Random number generation - std-optimized
+rand = { version = "0.8", features = ["std", "std_rng"] }
+rand_core = { version = "0.6", features = ["std"] }
+getrandom = { version = "0.2", features = ["std"] }
+
+# Utilities
+zeroize = { version = "1.8", features = ["std"] }
+subtle = { version = "2.6", features = ["std"] }
+constant_time_eq = "0.3"
+
+# Serialization and parsing
+hex = "0.4"
+base64 = "0.22"
+serde = { version = "1.0", features = ["derive", "std"] }
+der = { version = "0.7", features = ["std", "pem"] }
+pem = "3.0"
+
+# TLS and certificate handling
+x509-parser = "0.16"
+webpki = "0.22"
+
+# Threading and performance
+rayon = "1.11"
+crossbeam = "0.8"
+
+# Error handling
+thiserror = "2.0"
+anyhow = "1.0"
+
+[dev-dependencies]
+hex = "0.4"
+hex-literal = "1.0.0"
+serde_json = "1.0"
+tokio = { version = "1.0", features = ["full"] }
+vefas-core = { path = "../vefas-core" }
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
+# Enforce no_std compatibility by default
+[lib]
+name = "vefas_crypto_native"
+path = "src/lib.rs"

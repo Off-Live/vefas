@@ -1,0 +1,21 @@
+{
+  "certificate_file": "rsa4096.crt",
+  "private_key_file": "rsa4096.key",
+  "algorithm": "rsaEncryption",
+  "key_size": "(4096 bit)",
+  "subject": "C = US, ST = CA, L = San Francisco, O = Vefas Labs, OU = Testing, CN = tls13-test.local",
+  "issuer": "C = US, ST = CA, L = San Francisco, O = Vefas Labs, OU = Testing, CN = tls13-test.local",
+  "valid_from": "Oct  1 09:50:19 2025 GMT",
+  "valid_to": "Oct  1 09:50:19 2026 GMT",
+  "fingerprint_sha256": "41:F0:17:27:4A:E2:B2:B2:95:10:79:E5:2A:47:6B:DA:BC:3A:F6:4D:85:85:47:45:12:A8:19:08:E6:15:97:EB",
+  "fingerprint_sha1": "2C:E1:10:F7:CD:3E:77:50:B5:7D:98:E1:64:B1:6A:75:EA:B9:B0:45",
+  "serial_number": "1FE96434CBECD893A4E2D5CEE7EC41BB57F8158D",
+  "tls13_compatible": true,
+  "supported_cipher_suites": [
+    "TLS_AES_128_GCM_SHA256",
+    "TLS_AES_256_GCM_SHA384",
+    "TLS_CHACHA20_POLY1305_SHA256",
+    "TLS_AES_128_CCM_SHA256",
+    "TLS_AES_128_CCM_8_SHA256"
+  ]
+}

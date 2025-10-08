@@ -1,0 +1,25 @@
+[package]
+name = "vefas-risc0-guest"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+risc0-zkvm = { version = "3.0.3", default-features = false, features = ["std", "unstable"] }
+vefas-types = { path = "../../../vefas-types" }
+vefas-crypto-risc0 = { path = "../../../vefas-crypto-risc0" }
+vefas-crypto = { path = "../../../vefas-crypto", default-features = false }
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+bincode.workspace = true
+
+# Error handling
+thiserror = "1.0"
+
+# Constant-time operations for security
+subtle = "2.6"
+
+[profile.release]
+# Optimize for RISC0 zkVM performance
+codegen-units = 1
+lto = "thin"

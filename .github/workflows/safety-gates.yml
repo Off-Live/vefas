@@ -1,0 +1,212 @@
+name: VEFAS CI Safety Gates
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  release:
+    types: [ published ]
+
+env:
+  RUST_BACKTRACE: 1
+  CARGO_TERM_COLOR: always
+
+jobs:
+  safety-checks:
+    name: Safety Checks
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Install Rust
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+        components: rustfmt, clippy
+        override: true
+        
+    - name: Cache cargo registry
+      uses: actions/cache@v3
+      with:
+        path: ~/.cargo/registry
+        key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+        
+    - name: Cache cargo index
+      uses: actions/cache@v3
+      with:
+        path: ~/.cargo/git
+        key: ${{ runner.os }}-cargo-index-${{ hashFiles('**/Cargo.lock') }}
+        
+    - name: Cache cargo build
+      uses: actions/cache@v3
+      with:
+        path: target
+        key: ${{ runner.os }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
+
+    - name: Check for private-capture feature
+      run: |
+        echo "Checking for forbidden 'private-capture' feature..."
+        if grep -r "private-capture" crates/; then
+          echo "❌ ERROR: 'private-capture' feature found! This is forbidden in CI."
+          exit 1
+        else
+          echo "✅ No 'private-capture' feature found."
+        fi
+
+    - name: Verify debug-only compilation
+      run: |
+        echo "Testing debug-only safety gates..."
+        cd crates/vefas-rustls
+        cargo test --lib safety::tests::test_safe_capture_handle_creation
+
+    - name: Test release build safety
+      run: |
+        echo "Testing release build safety..."
+        cd crates/vefas-rustls
+        cargo build --release --lib
+        echo "✅ Release build completed without private capture"
+
+    - name: Run safety tests
+      run: |
+        echo "Running safety tests..."
+        cd crates/vefas-rustls
+        cargo test --lib safety
+
+  security-audit:
+    name: Security Audit
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Install Rust
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+        override: true
+
+    - name: Install cargo-audit
+      run: cargo install cargo-audit
+
+    - name: Run security audit
+      run: |
+        echo "Running security audit..."
+        cargo audit
+        echo "✅ Security audit passed"
+
+  build-test:
+    name: Build and Test
+    runs-on: ubuntu-latest
+    
+    strategy:
+      matrix:
+        build-type: [debug, release]
+        
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Install Rust
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+        override: true
+
+    - name: Cache cargo
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: ${{ runner.os }}-cargo-${{ matrix.build-type }}-${{ hashFiles('**/Cargo.lock') }}
+
+    - name: Build (${{ matrix.build-type }})
+      run: |
+        echo "Building in ${{ matrix.build-type }} mode..."
+        cargo build --${{ matrix.build-type }} --all
+        echo "✅ Build completed"
+
+    - name: Test (${{ matrix.build-type }})
+      run: |
+        echo "Testing in ${{ matrix.build-type }} mode..."
+        cargo test --${{ matrix.build-type }} --all
+        echo "✅ Tests passed"
+
+    - name: Check for private key capture in release
+      if: matrix.build-type == 'release'
+      run: |
+        echo "Verifying no private key capture in release build..."
+        # This should fail if private capture is enabled in release
+        if cargo test --release --lib safety::tests::test_safe_capture_handle_creation 2>&1 | grep -q "Should panic in release mode"; then
+          echo "✅ Private key capture properly disabled in release"
+        else
+          echo "❌ ERROR: Private key capture may be enabled in release!"
+          exit 1
+        fi
+
+  integration-test:
+    name: Integration Test
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Install Rust
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+        override: true
+
+    - name: Cache cargo
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: ${{ runner.os }}-cargo-integration-${{ hashFiles('**/Cargo.lock') }}
+
+    - name: Run integration tests
+      run: |
+        echo "Running integration tests..."
+        cargo test --all --features "test-util"
+        echo "✅ Integration tests passed"
+
+    - name: Test vefas-core integration
+      run: |
+        echo "Testing vefas-core integration..."
+        cargo test -p vefas-core
+        echo "✅ vefas-core integration tests passed"
+
+  documentation:
+    name: Documentation
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Install Rust
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+        components: rust-docs
+        override: true
+
+    - name: Generate documentation
+      run: |
+        echo "Generating documentation..."
+        cargo doc --all --no-deps
+        echo "✅ Documentation generated"
+
+    - name: Check documentation
+      run: |
+        echo "Checking documentation..."
+        cargo doc --all --no-deps --document-private-items
+        echo "✅ Documentation check passed"

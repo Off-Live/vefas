@@ -1,0 +1,64 @@
+[package]
+name = "vefas-crypto-sp1"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+description = "SP1 zkVM cryptographic provider for VEFAS using official SP1 patches"
+
+[features]
+default = []
+
+[dependencies]
+# Core crypto traits and types
+vefas-crypto = { path = "../vefas-crypto", default-features = false }
+vefas-types = { path = "../vefas-types", default-features = false }
+
+# SP1-specific dependencies
+sp1-zkvm = { version = "5.2.1", default-features = false, features = ["lib"] }
+
+# SP1 Patched Cryptographic Crates - Official Succinct patches (for TLS handshake crypto in zkVM)
+# NOTE: These are commented out for certificate/ciphersuite validation which uses standard crates
+# sha2 = { git = "https://github.com/sp1-patches/RustCrypto-hashes", package = "sha2", tag = "patch-sha2-0.10.9-sp1-4.0.0", default-features = false }
+# p256 = { git = "https://github.com/sp1-patches/elliptic-curves", package = "p256", tag = "patch-p256-13.2-sp1-5.0.0", default-features = false, features = ["ecdh", "ecdsa", "arithmetic"] }
+# ecdsa = { git = "https://github.com/sp1-patches/signatures", tag = "patch-16.9-sp1-4.1.0", default-features = false, features = ["verifying"] }
+
+# Standard no_std crypto crates (same as vefas-crypto-native) for certificate/ciphersuite validation
+sha2 = { version = "0.10", default-features = false }
+p256 = { version = "0.13", default-features = false, features = ["ecdh", "ecdsa", "arithmetic"] }
+ecdsa = { version = "0.16", default-features = false, features = ["verifying"] }
+
+# Essential crypto dependencies for SP1 precompiles
+aes-gcm = { version = "0.11.0-rc.1", default-features = false, features = ["aes", "alloc"] }
+
+# Self-contained no_std fallback dependencies
+hmac = { version = "0.12", default-features = false }
+hkdf = { version = "0.12", default-features = false }
+x25519-dalek = { version = "2.0", default-features = false, features = ["zeroize", "static_secrets"] }
+chacha20poly1305 = { version = "0.10", default-features = false, features = ["alloc"] }
+ed25519-dalek = { version = "2.0", default-features = false, features = ["zeroize"] }
+k256 = { version = "0.13", default-features = false, features = ["ecdh", "ecdsa", "arithmetic"] }
+rsa = { version = "0.9", default-features = false, features = ["sha2"] }
+
+# Utilities
+zeroize = { version = "1.7", default-features = false }
+subtle = { version = "2.5", default-features = false }
+rand_core = { version = "0.6", default-features = false }
+
+# Serialization
+serde = { version = "1.0", default-features = false, features = ["derive", "alloc"] }
+
+# Testing
+hex = { version = "0.4", default-features = false, features = ["alloc"] }
+hex-literal = "1.0"
+
+[dev-dependencies]
+# Test dependencies with std support
+hex-literal = "1.0"
+x509-parser = { version = "0.16", features = ["verify"] }
+base64 = "0.22"
+rand = "0.8"
+serde_json = "1.0"
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]

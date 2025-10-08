@@ -1,0 +1,40 @@
+[package]
+name = "vefas-sp1"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+description = "SP1 zkVM implementation for VEFAS - production-grade zero-knowledge TLS verification for agents"
+
+[dependencies]
+# Internal dependencies
+vefas-types = { path = "../vefas-types" }
+vefas-crypto = { path = "../vefas-crypto" }
+vefas-crypto-sp1 = { path = "../vefas-crypto-sp1" }
+uuid = { version = "1.10", features = ["v4"], default-features = false }
+
+# SP1-specific dependencies
+sp1-zkvm = { version = "5.2.1", default-features = false, features = ["lib"] }
+sp1-sdk = { version = "5.2.1", optional = true }
+sp1-core-executor = { version = "5.2.1", optional = true }
+
+# Script crate for guest program
+vefas-sp1-script = { path = "script", optional = true }
+
+# Common dependencies from workspace
+serde.workspace = true
+thiserror.workspace = true
+bincode.workspace = true
+
+# Platform-specific dependencies
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing = "0.1"
+
+[dev-dependencies]
+vefas-core = { path = "../vefas-core" }
+vefas-crypto-native = { path = "../vefas-crypto-native" }
+tokio = { version = "1", features = ["full"] }
+
+[features]
+default = ["host-prover"]
+host-prover = ["sp1-sdk", "vefas-sp1-script", "sp1-core-executor"]
+cuda = []  # CUDA acceleration for SP1 (runtime configured via SP1_PROVER=cuda or builder)

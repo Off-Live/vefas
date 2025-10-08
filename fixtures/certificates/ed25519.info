@@ -1,0 +1,21 @@
+{
+  "certificate_file": "ed25519.crt",
+  "private_key_file": "ed25519.key",
+  "algorithm": "ED25519",
+  "key_size": "",
+  "subject": "C = US, ST = CA, L = San Francisco, O = Vefas Labs, OU = Testing, CN = tls13-test.local",
+  "issuer": "C = US, ST = CA, L = San Francisco, O = Vefas Labs, OU = Testing, CN = tls13-test.local",
+  "valid_from": "Oct  1 09:50:19 2025 GMT",
+  "valid_to": "Oct  1 09:50:19 2026 GMT",
+  "fingerprint_sha256": "31:E5:B1:8A:EC:D5:DA:AD:C3:54:53:F8:12:D5:E4:4F:0D:11:A3:FC:99:BD:EE:ED:77:3C:89:F9:C5:E7:60:41",
+  "fingerprint_sha1": "3F:90:23:C6:D7:5C:31:FF:5F:C4:08:BA:19:44:7F:40:A2:1A:60:44",
+  "serial_number": "56B5F95C443037CD8D16A5CB7BF9181AFFB7FDEC",
+  "tls13_compatible": true,
+  "supported_cipher_suites": [
+    "TLS_AES_128_GCM_SHA256",
+    "TLS_AES_256_GCM_SHA384",
+    "TLS_CHACHA20_POLY1305_SHA256",
+    "TLS_AES_128_CCM_SHA256",
+    "TLS_AES_128_CCM_8_SHA256"
+  ]
+}

@@ -1,0 +1,11 @@
+[package]
+name = "vefas-sp1-script"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+sp1-sdk = "5.2.1"
+vefas-types = { path = "../../vefas-types" }
+
+[build-dependencies]
+sp1-build = "5.2.1"
