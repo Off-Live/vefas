@@ -1,31 +1,28 @@
-use axum::Router;
 use reqwest::{Client, StatusCode};
 use serde_json::Value;
-use std::process::{Command, Stdio};
-use std::thread;
-use std::time::Duration as StdDuration;
+use serial_test::serial;
 use tokio::task::JoinHandle;
 use tokio::time::{sleep, Duration};
-use vefas_gateway::{VefasGateway, VefasGatewayConfig};
+use vefas_node::{VefasNode, VefasNodeConfig};
 
-const BASE_URL: &str = "http://127.0.0.1:3000";
-
-async fn spawn_gateway_for_tests() -> Option<(JoinHandle<()>, String)> {
-    // Build router using gateway instance, then bind to an ephemeral port
-    let gw = match VefasGateway::new(VefasGatewayConfig {
+async fn spawn_node_for_tests() -> Option<(JoinHandle<()>, String)> {
+    // Create VEFAS node with ephemeral port
+    let config = VefasNodeConfig {
         bind_address: "127.0.0.1:0".to_string(),
         ..Default::default()
-    })
-    .await
-    {
-        Ok(g) => g,
+    };
+
+    let node = match VefasNode::new(config).await {
+        Ok(n) => n,
         Err(e) => {
-            eprintln!("Skipping: failed to initialize VEFAS Gateway: {}", e);
+            eprintln!("Skipping: failed to initialize VEFAS Node: {}", e);
             return None;
         }
     };
 
-    let router: Router = gw.router();
+    // Build router from node
+    let router = node.router();
+
     let listener = match tokio::net::TcpListener::bind("127.0.0.1:0").await {
         Ok(l) => l,
         Err(e) => {
@@ -33,19 +30,23 @@ async fn spawn_gateway_for_tests() -> Option<(JoinHandle<()>, String)> {
             return None;
         }
     };
+
     let addr = listener.local_addr().ok()?;
     let base_url = format!("http://{}", addr);
+
     let handle = tokio::spawn(async move {
         let _ = axum::serve(listener, router).await;
     });
-    // small delay to ensure server starts
+
+    // Small delay to ensure server starts
     sleep(Duration::from_millis(300)).await;
     Some((handle, base_url))
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
+#[serial]
 async fn test_service_info() {
-    let (_server, base) = match spawn_gateway_for_tests().await {
+    let (_server, base) = match spawn_node_for_tests().await {
         Some(v) => v,
         None => return,
     };
@@ -64,9 +65,9 @@ async fn test_service_info() {
     // Verify service information structure
     assert_eq!(
         body.get("service").unwrap().as_str().unwrap(),
-        "VEFAS Gateway"
+        "VEFAS Node"
     );
-    assert_eq!(body.get("version").unwrap().as_str().unwrap(), "0.1.0");
+    assert!(body.get("version").is_some());
     assert_eq!(body.get("api_version").unwrap().as_str().unwrap(), "v1");
 
     let endpoints = body.get("endpoints").unwrap().as_array().unwrap();
@@ -75,9 +76,10 @@ async fn test_service_info() {
     println!("✓ Service info endpoint working correctly");
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
+#[serial]
 async fn test_health_check() {
-    let (_server, base) = match spawn_gateway_for_tests().await {
+    let (_server, base) = match spawn_node_for_tests().await {
         Some(v) => v,
         None => return,
     };
@@ -96,7 +98,7 @@ async fn test_health_check() {
     // Verify health check structure
     assert_eq!(body.get("status").unwrap().as_str().unwrap(), "healthy");
     assert!(body.get("timestamp").is_some());
-    assert_eq!(body.get("version").unwrap().as_str().unwrap(), "0.1.0");
+    assert!(body.get("version").is_some(), "Version field should be present");
 
     // Verify zkVM platform availability
     let platforms = body.get("platforms").unwrap().as_array().unwrap();
@@ -105,9 +107,10 @@ async fn test_health_check() {
     println!("✓ Health check endpoint working correctly");
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
+#[serial]
 async fn test_server_availability() {
-    let (_server, base) = match spawn_gateway_for_tests().await {
+    let (_server, base) = match spawn_node_for_tests().await {
         Some(v) => v,
         None => return,
     };
@@ -127,9 +130,10 @@ async fn test_server_availability() {
     println!("✓ Server is available and responsive");
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
+#[serial]
 async fn test_invalid_endpoint() {
-    let (_server, base) = match spawn_gateway_for_tests().await {
+    let (_server, base) = match spawn_node_for_tests().await {
         Some(v) => v,
         None => return,
     };
@@ -146,9 +150,10 @@ async fn test_invalid_endpoint() {
     println!("✓ Invalid endpoint returns 404 as expected");
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
+#[serial]
 async fn test_cors_headers() {
-    let (_server, base) = match spawn_gateway_for_tests().await {
+    let (_server, base) = match spawn_node_for_tests().await {
         Some(v) => v,
         None => return,
     };
@@ -166,9 +171,10 @@ async fn test_cors_headers() {
     println!("✓ CORS preflight request handled correctly");
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
+#[serial]
 async fn test_requests_endpoint_structure() {
-    let (_server, base) = match spawn_gateway_for_tests().await {
+    let (_server, base) = match spawn_node_for_tests().await {
         Some(v) => v,
         None => return,
     };
@@ -192,9 +198,10 @@ async fn test_requests_endpoint_structure() {
     println!("✓ Requests endpoint rejects invalid payloads as expected");
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
+#[serial]
 async fn test_verify_endpoint_structure() {
-    let (_server, base) = match spawn_gateway_for_tests().await {
+    let (_server, base) = match spawn_node_for_tests().await {
         Some(v) => v,
         None => return,
     };
@@ -218,11 +225,12 @@ async fn test_verify_endpoint_structure() {
     println!("✓ Verify endpoint rejects invalid payloads as expected");
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[serial]
 async fn test_real_http_request_with_body_extraction() {
     use serde_json::json;
 
-    let (_server, base) = match spawn_gateway_for_tests().await {
+    let (_server, base) = match spawn_node_for_tests().await {
         Some(v) => v,
         None => {
             println!("Skipping test - gateway not available");
@@ -282,9 +290,10 @@ async fn test_real_http_request_with_body_extraction() {
     }
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[serial]
 async fn test_e2e_proof_generation_and_verification_sp1() {
-    let (_server, base) = match spawn_gateway_for_tests().await {
+    let (_server, base) = match spawn_node_for_tests().await {
         Some(v) => v,
         None => return,
     };
@@ -350,8 +359,14 @@ async fn test_e2e_proof_generation_and_verification_sp1() {
     let platform = proof.get("platform").and_then(|v| v.as_str()).unwrap_or("");
     assert_eq!(platform, "sp1");
 
-    // Verify the proof
-    let verify_payload = serde_json::json!({"proof": proof});
+    // Extract bundle from response for Layer 2 verification
+    let bundle = exec_body.get("bundle").expect("missing bundle");
+
+    // Verify the proof with bundle for 2-layer verification
+    let verify_payload = serde_json::json!({
+        "proof": proof,
+        "bundle": bundle
+    });
     let verify_resp = client
         .post(&format!("{}/api/v1/verify", base))
         .json(&verify_payload)
@@ -378,9 +393,10 @@ async fn test_e2e_proof_generation_and_verification_sp1() {
         .unwrap_or(false));
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[serial]
 async fn test_e2e_proof_generation_and_verification_risc0() {
-    let (_server, base) = match spawn_gateway_for_tests().await {
+    let (_server, base) = match spawn_node_for_tests().await {
         Some(v) => v,
         None => return,
     };
@@ -446,8 +462,14 @@ async fn test_e2e_proof_generation_and_verification_risc0() {
     let platform = proof.get("platform").and_then(|v| v.as_str()).unwrap_or("");
     assert_eq!(platform, "risc0");
 
-    // Verify the proof
-    let verify_payload = serde_json::json!({"proof": proof});
+    // Extract bundle from response for Layer 2 verification
+    let bundle = exec_body.get("bundle").expect("missing bundle");
+
+    // Verify the proof with bundle for 2-layer verification
+    let verify_payload = serde_json::json!({
+        "proof": proof,
+        "bundle": bundle
+    });
     let verify_resp = client
         .post(&format!("{}/api/v1/verify", base))
         .json(&verify_payload)

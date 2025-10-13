@@ -11,16 +11,13 @@ use alloc::{
     vec::Vec,
 };
 
-// Debug macro that works in both std and no_std environments
-macro_rules! debug_print {
-    ($($arg:tt)*) => {
-        // No-op for now - debugging disabled
-    };
-}
-
 use crate::input_validation::{memmem, parse_der_length};
+use crate::{FieldId, MerkleProof};
+use crate::bundle_parser::{
+    compute_certificate_fingerprint, extract_server_random, extract_server_pubkey_fingerprint
+};
 use const_oid::db::rfc5280::ID_CE_SUBJECT_ALT_NAME;
-use vefas_types::{VefasError, VefasResult};
+use vefas_types::{VefasError, VefasResult, VefasCanonicalBundle, HandshakeProof};
 use x509_cert::{der::Decode, Certificate};
 use x509_cert::der::Encode;
 
@@ -2923,3 +2920,100 @@ mod tests {
         assert!(result.is_err());
     }
 }
+
+/// Validate HandshakeProof integrity
+///
+/// This function performs comprehensive integrity validation of a HandshakeProof
+/// by checking:
+/// 1. Structure validation (required fields present)
+/// 2. Certificate fingerprint consistency with certificate chain
+/// 3. ClientHello/ServerHello consistency with bundle data
+/// 4. Server random extraction correctness
+///
+/// # Arguments
+/// * `handshake_proof` - The HandshakeProof to validate
+/// * `bundle` - The VEFAS canonical bundle for cross-validation
+///
+/// # Returns
+/// A Result indicating validation success or failure with specific error details
+pub fn validate_handshake_proof_integrity(
+    handshake_proof: &HandshakeProof,
+    bundle: &VefasCanonicalBundle,
+) -> VefasResult<()> {
+    // 1. Basic structure validation
+    handshake_proof.validate()?;
+    
+    // 2. Validate certificate fingerprint consistency
+    let expected_cert_fingerprint = compute_certificate_fingerprint(bundle)?;
+    if handshake_proof.cert_fingerprint != expected_cert_fingerprint {
+        return Err(VefasError::invalid_input(
+            "cert_fingerprint", 
+            "Certificate fingerprint in HandshakeProof does not match certificate chain"
+        ));
+    }
+    
+    // 3. Validate ClientHello consistency
+    if handshake_proof.client_hello != bundle.client_hello {
+        return Err(VefasError::invalid_input(
+            "client_hello", 
+            "ClientHello in HandshakeProof does not match bundle ClientHello"
+        ));
+    }
+    
+    // 4. Validate ServerHello consistency
+    if handshake_proof.server_hello != bundle.server_hello {
+        return Err(VefasError::invalid_input(
+            "server_hello", 
+            "ServerHello in HandshakeProof does not match bundle ServerHello"
+        ));
+    }
+    
+    // 5. Validate server random consistency
+    if handshake_proof.server_random != bundle.server_random {
+        return Err(VefasError::invalid_input(
+            "server_random", 
+            "Server random in HandshakeProof does not match bundle server random"
+        ));
+    }
+    
+    // 6. Validate cipher suite consistency
+    if handshake_proof.cipher_suite != bundle.cipher_suite {
+        return Err(VefasError::invalid_input(
+            "cipher_suite", 
+            "Cipher suite in HandshakeProof does not match bundle cipher suite"
+        ));
+    }
+    
+    
+    Ok(())
+}
+
+/// Validate HandshakeProof from Merkle proof
+///
+/// This function validates a HandshakeProof that was extracted from a Merkle proof
+/// by reconstructing it and performing integrity validation.
+///
+/// # Arguments
+/// * `bundle` - The VEFAS canonical bundle containing the Merkle proof
+///
+/// # Returns
+/// A Result indicating validation success or failure
+pub fn validate_handshake_proof_from_merkle(
+    bundle: &VefasCanonicalBundle,
+) -> VefasResult<()> {
+    // Extract HandshakeProof from Merkle proof
+    let proof_bytes = bundle.get_merkle_proof(FieldId::HandshakeProof as u8)
+        .ok_or_else(|| VefasError::invalid_input("handshake_proof", "HandshakeProof Merkle proof not found"))?;
+    
+    let proof: MerkleProof = bincode::deserialize(proof_bytes)
+        .map_err(|e| VefasError::invalid_input("handshake_proof", &format!("Failed to deserialize Merkle proof: {}", e)))?;
+    
+    // Deserialize HandshakeProof from Merkle proof data
+    let handshake_proof = HandshakeProof::from_bytes(&proof.leaf_value)?;
+    
+    // Perform integrity validation
+    validate_handshake_proof_integrity(&handshake_proof, bundle)?;
+    
+    Ok(())
+}
+

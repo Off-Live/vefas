@@ -1,4 +1,4 @@
-//! HTTP request handlers for VEFAS Gateway endpoints
+//! HTTP request handlers for VEFAS Node endpoints
 
 use axum::{
     extract::{Json, State},
@@ -11,7 +11,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use tracing::{debug, error, info, instrument, warn};
 use uuid::Uuid;
 
-use crate::{error::*, types::*, VefasGatewayState};
+use crate::{error::*, types::*, VefasNodeState};
 use vefas_types::VefasCanonicalBundle;
 use vefas_crypto::{FieldId, MerkleError};
 
@@ -19,9 +19,9 @@ use vefas_crypto::{FieldId, MerkleError};
 #[axum::debug_handler]
 #[instrument(skip(state, payload), fields(session_id, method, url = %payload.url))]
 pub async fn execute_request(
-    State(state): State<Arc<VefasGatewayState>>,
+    State(state): State<Arc<VefasNodeState>>,
     Json(payload): Json<ExecuteRequestPayload>,
-) -> Result<ResponseJson<ExecuteRequestResponse>, VefasGatewayError> {
+) -> Result<ResponseJson<ExecuteRequestResponse>, VefasNodeError> {
     // Generate unique session ID for tracking
     let session_id = Uuid::new_v4().to_string();
     tracing::Span::current().record("session_id", &session_id);
@@ -31,11 +31,11 @@ pub async fn execute_request(
 
     // Basic request validation (minimal checks for safety)
     if !payload.url.starts_with("https://") {
-        return Err(VefasGatewayError::InvalidRequest("URL must use HTTPS protocol".to_string()));
+        return Err(VefasNodeError::InvalidRequest("URL must use HTTPS protocol".to_string()));
     }
 
     if payload.timeout_ms < 1000 || payload.timeout_ms > 300000 {
-        return Err(VefasGatewayError::InvalidRequest("Timeout must be between 1 and 300 seconds".to_string()));
+        return Err(VefasNodeError::InvalidRequest("Timeout must be between 1 and 300 seconds".to_string()));
     }
 
     debug!("Basic request validation passed for session {}", session_id);
@@ -45,7 +45,7 @@ pub async fn execute_request(
         let headers = payload.get_headers_vec();
         let body = payload
             .get_body_bytes()
-            .map_err(|e| VefasGatewayError::InvalidRequest(e))?;
+            .map_err(|e| VefasNodeError::InvalidRequest(e))?;
 
         // Convert headers to the format expected by vefas-core
         let headers_str_refs: Option<Vec<(&str, &str)>> = headers
@@ -64,7 +64,7 @@ pub async fn execute_request(
             .await
             .map_err(|e| {
                 error!("Failed to execute HTTPS request: {}", e);
-                VefasGatewayError::VefasCore(e)
+                VefasNodeError::VefasCore(e)
             })?
     };
 
@@ -72,7 +72,7 @@ pub async fn execute_request(
 
     // Build Merkle tree with 6 fields for selective disclosure + performance
     // User-verifiable (4): HttpRequest, HttpResponse, Domain, Timestamp
-    // Internal (2): HandshakeProof, CryptoWitness
+    // Internal (2): HandshakeProof, TlsVersion
     // This achieves ~25% cycle reduction while enabling privacy-preserving selective disclosure
     let required_fields = vec![
         // User-verifiable fields (can be shared independently)
@@ -81,14 +81,14 @@ pub async fn execute_request(
         FieldId::Domain,           // Users can prove which domain
         FieldId::Timestamp,        // Users can prove when
         // Internal fields (for zkVM verification)
-        FieldId::HandshakeProof,   // TLS handshake validity (composite)
-        FieldId::CryptoWitness,    // Crypto parameters (composite)
+        FieldId::HandshakeProof,   // TLS handshake validity (composite: client_hello + server_hello + cert_fingerprint + server_random + cipher_suite)
+        FieldId::TlsVersion,       // TLS protocol version metadata
     ];
 
     debug!("Building Merkle tree with {} required fields", required_fields.len());
     transcript_bundle.build_merkle_tree(&required_fields).map_err(|e| {
         error!("Failed to build Merkle tree: {}", e);
-        VefasGatewayError::VefasCore(vefas_core::VefasCoreError::tls_error(&format!("Merkle tree construction failed: {}", e)))
+        VefasNodeError::VefasCore(vefas_core::VefasCoreError::tls_error(&format!("Merkle tree construction failed: {}", e)))
     })?;
 
     info!("Successfully built Merkle tree with root: {:02x?}", 
@@ -108,7 +108,7 @@ pub async fn execute_request(
         for (field_id, proof) in &transcript_bundle.merkle_proofs {
             let proof_bytes = bincode::serialize(proof).map_err(|e| {
                 error!("Failed to serialize Merkle proof: {}", e);
-                VefasGatewayError::VefasCore(vefas_core::VefasCoreError::tls_error(&format!("Merkle proof serialization failed: {}", e)))
+                VefasNodeError::VefasCore(vefas_core::VefasCoreError::tls_error(&format!("Merkle proof serialization failed: {}", e)))
             })?;
             merkle_proofs.push((*field_id as u8, proof_bytes));
         }
@@ -136,11 +136,11 @@ pub async fn execute_request(
 
     // Generate cryptographic proof with the bundle that now has Merkle proofs
     let proof_data = state
-        .proof_service
+        .prover_service
         .generate_proof(&bundle, &payload.proof_platform)
         .await
         .map_err(|e| {
-            error!("Proof generation failed: {}", e);
+            error!("Proof generation failed for platform {:?}: {}", payload.proof_platform, e);
             e
         })?;
 
@@ -159,12 +159,13 @@ pub async fn execute_request(
             .collect(),
     };
 
-    // Create response
+    // Create response including the bundle for Layer 2 verification
     let response = ExecuteRequestResponse {
         success: true,
         http_response,
         proof: proof_data,
         merkle_tree: merkle_tree_info,
+        bundle: bundle.clone(),
         session_id: session_id.clone(),
     };
 
@@ -177,9 +178,9 @@ pub async fn execute_request(
 #[axum::debug_handler]
 #[instrument(skip(state, payload), fields(platform = %payload.proof.platform))]
 pub async fn verify_proof(
-    State(state): State<Arc<VefasGatewayState>>,
+    State(state): State<Arc<VefasNodeState>>,
     Json(payload): Json<VerifyProofPayload>,
-) -> Result<ResponseJson<VerifyProofResponse>, VefasGatewayError> {
+) -> Result<ResponseJson<VerifyProofResponse>, VefasNodeError> {
     info!(
         "Processing proof verification request for platform: {}",
         payload.proof.platform
@@ -187,40 +188,133 @@ pub async fn verify_proof(
 
     // Basic proof validation (minimal checks for safety)
     if !["sp1", "risc0"].contains(&payload.proof.platform.as_str()) {
-        return Err(VefasGatewayError::InvalidRequest("Unsupported proof platform".to_string()));
+        return Err(VefasNodeError::InvalidRequest("Unsupported proof platform".to_string()));
     }
 
     if payload.proof.proof_data.is_empty() {
-        return Err(VefasGatewayError::InvalidRequest("Proof data cannot be empty".to_string()));
+        return Err(VefasNodeError::InvalidRequest("Proof data cannot be empty".to_string()));
     }
 
     debug!("Basic verification request validation passed");
 
-    // Verify the proof
-    let verification_result = state
-        .proof_service
-        .verify_proof(&payload.proof, payload.expected_claim.as_ref())
+    // ============================================================================
+    // 2-LAYER VERIFICATION: VerifierService performs complete validation
+    // - Layer 1: zkVM proof verification (RISC0/SP1 Receipt.verify())
+    // - Layer 2: Cryptographic validation (Merkle proofs, certificates, claims)
+    // ============================================================================
+    info!("Starting 2-layer verification using VerifierService");
+
+    // Reconstruct the full proof structure for validation
+    use base64::{engine::general_purpose, Engine as _};
+    let proof_bytes = general_purpose::STANDARD
+        .decode(&payload.proof.proof_data)
+        .map_err(|e| VefasNodeError::InvalidRequest(format!("Invalid proof data encoding: {}", e)))?;
+
+    // Reconstruct platform-specific proof structure
+    let full_proof_bytes = match payload.proof.platform.as_str() {
+        "risc0" => {
+            // Reconstruct VefasRisc0Proof
+            use vefas_types::VefasExecutionMetadata;
+            let risc0_proof = vefas_risc0::VefasRisc0Proof {
+                receipt_data: proof_bytes,
+                claim: payload.proof.claim.clone(),
+                execution_metadata: VefasExecutionMetadata::new(
+                    payload.proof.execution_metadata.cycles,
+                    payload.proof.execution_metadata.memory_usage as usize,
+                    payload.proof.execution_metadata.execution_time_ms,
+                    payload.proof.execution_metadata.platform.clone(),
+                    payload.proof.execution_metadata.proof_time_ms,
+                ).map_err(|e| VefasNodeError::InvalidRequest(format!("Invalid execution metadata: {:?}", e)))?,
+            };
+            bincode::serialize(&risc0_proof)
+                .map_err(|e| VefasNodeError::InvalidRequest(format!("Failed to serialize RISC0 proof: {}", e)))?
+        }
+        "sp1" => {
+            // Reconstruct VefasSp1Proof
+            use vefas_types::VefasExecutionMetadata;
+            let sp1_proof = vefas_sp1::VefasSp1Proof {
+                proof_data: proof_bytes,
+                claim: payload.proof.claim.clone(),
+                execution_metadata: VefasExecutionMetadata::new(
+                    payload.proof.execution_metadata.cycles,
+                    payload.proof.execution_metadata.memory_usage as usize,
+                    payload.proof.execution_metadata.execution_time_ms,
+                    payload.proof.execution_metadata.platform.clone(),
+                    payload.proof.execution_metadata.proof_time_ms,
+                ).map_err(|e| VefasNodeError::InvalidRequest(format!("Invalid execution metadata: {:?}", e)))?,
+            };
+            bincode::serialize(&sp1_proof)
+                .map_err(|e| VefasNodeError::InvalidRequest(format!("Failed to serialize SP1 proof: {}", e)))?
+        }
+        _ => {
+            return Err(VefasNodeError::InvalidRequest(format!("Unsupported platform: {}", payload.proof.platform)));
+        }
+    };
+
+    // Run complete 2-layer validation using VerifierService
+    let validation_result = state
+        .verifier_service
+        .validate_zk_proof(
+            &full_proof_bytes,
+            &payload.proof.platform,
+            &payload.bundle,
+        )
         .await
         .map_err(|e| {
-            error!("Proof verification failed: {}", e);
+            error!("Verification failed: {}", e);
             e
         })?;
 
-    if verification_result.valid {
-        info!(
-            "Proof verification successful for platform: {}",
-            payload.proof.platform
+    if !validation_result.is_valid {
+        warn!(
+            "Verification failed: {} errors found",
+            validation_result.errors.len()
         );
     } else {
-        warn!(
-            "Proof verification failed for platform: {}",
-            payload.proof.platform
+        info!(
+            "Verification passed: {}/{} Merkle proofs validated, claim verification: {}",
+            validation_result.metadata.merkle_proofs_count,
+            payload.bundle.merkle_proofs.len(),
+            validation_result.metadata.claim_verification_successful
         );
     }
 
+    // Extract verified claim or use default
+    let verified_claim = validation_result.claim.unwrap_or_else(|| {
+        // If verification failed and no claim was extracted, use the claim from request
+        payload.proof.claim.clone()
+    });
+
+    // Create verification metadata
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let verification_metadata = VerificationMetadata {
+        verification_time_ms: validation_result.metadata.validation_time_ms,
+        verifier_version: env!("CARGO_PKG_VERSION").to_string(),
+        verified_at: SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs(),
+    };
+
+    // Create verification result
+    let verification_result = VerificationResult {
+        valid: validation_result.is_valid,
+        platform: payload.proof.platform.clone(),
+        verified_claim,
+        verification_metadata,
+        validation_errors: validation_result.errors,
+        merkle_proofs_validated: validation_result.metadata.merkle_proofs_count,
+        claim_verification_passed: validation_result.metadata.claim_verification_successful,
+    };
+
+    info!(
+        "2-layer verification completed: valid={}, platform={}",
+        validation_result.is_valid, payload.proof.platform
+    );
+
     // Create response
     let response = VerifyProofResponse {
-        success: true,
+        success: validation_result.is_valid,
         verification_result,
     };
 
@@ -230,11 +324,11 @@ pub async fn verify_proof(
 /// Handle GET /health endpoint - Health check
 #[instrument(skip(state))]
 pub async fn health_check(
-    State(state): State<Arc<VefasGatewayState>>,
+    State(state): State<Arc<VefasNodeState>>,
 ) -> ResponseJson<HealthResponse> {
     debug!("Processing health check request");
 
-    let platforms = state.proof_service.available_platforms();
+    let platforms = state.prover_service.available_platforms();
 
     let response = HealthResponse {
         status: "healthy".to_string(),
@@ -246,19 +340,19 @@ pub async fn health_check(
     ResponseJson(response)
 }
 
-/// Handle GET / endpoint - Root information
+/// Handle GET / endpoint - Service information
 #[instrument]
-pub async fn root() -> ResponseJson<RootResponse> {
-    debug!("Processing root request");
+pub async fn service_info() -> ResponseJson<RootResponse> {
+    debug!("Processing service info request");
 
     let response = RootResponse {
-        service: "VEFAS Gateway".to_string(),
+        service: "VEFAS Node".to_string(),
         version: env!("CARGO_PKG_VERSION").to_string(),
         api_version: "v1".to_string(),
         endpoints: vec![
-            "POST /api/v1/requests".to_string(),
-            "POST /api/v1/verify".to_string(),
-            "GET /api/v1/health".to_string(),
+            "POST /requests".to_string(),
+            "POST /verify".to_string(),
+            "GET /health".to_string(),
         ],
         documentation: "https://github.com/vefas/vefas".to_string(),
     };
@@ -274,9 +368,9 @@ mod tests {
     use std::collections::HashMap;
     use tower::ServiceExt;
 
-    async fn create_test_state() -> Arc<VefasGatewayState> {
-        use crate::VefasGatewayConfig;
-        VefasGatewayState::new(VefasGatewayConfig::default())
+    async fn create_test_state() -> Arc<VefasNodeState> {
+        use crate::VefasNodeConfig;
+        VefasNodeState::new(VefasNodeConfig::default())
             .await
             .unwrap()
             .into()
@@ -293,10 +387,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_root_handler() {
-        let response = root().await;
+    async fn test_service_info_handler() {
+        let response = service_info().await;
 
-        assert_eq!(response.0.service, "VEFAS Gateway");
+        assert_eq!(response.0.service, "VEFAS Node");
         assert_eq!(response.0.api_version, "v1");
         assert!(!response.0.endpoints.is_empty());
     }
@@ -331,18 +425,10 @@ mod tests {
 
         let performance = VefasPerformanceMetrics {
             total_cycles: 1000000,
-            decompression_cycles: 50000,
-            validation_cycles: 100000,
-            handshake_cycles: 200000,
-            certificate_validation_cycles: 150000,
-            key_derivation_cycles: 80000,
-            decryption_cycles: 120000,
+            merkle_verification_cycles: 100000,
             http_parsing_cycles: 60000,
             crypto_operations_cycles: 240000,
             memory_usage: 2048,
-            compression_ratio: Some(0.7),
-            original_bundle_size: Some(4096),
-            decompressed_bundle_size: Some(2867),
         };
 
         let execution_metadata = VefasExecutionMetadata {
@@ -366,6 +452,8 @@ mod tests {
             "TLS_AES_128_GCM_SHA256".to_string(),
             [3u8; 32], // certificate_chain_hash
             [4u8; 32], // handshake_transcript_hash
+            [5u8; 32], // cert_fingerprint
+            [6u8; 32], // proof_id
             1234567890,
             performance,
             execution_metadata,
@@ -386,9 +474,29 @@ mod tests {
             },
         };
 
+        // Create a mock bundle for testing
+        use vefas_types::VefasCanonicalBundle;
+        let bundle = VefasCanonicalBundle::new(
+            vec![0x16, 0x03, 0x03, 0x00, 0x30], // Mock ClientHello
+            vec![0x16, 0x03, 0x03, 0x00, 0x30], // Mock ServerHello
+            vec![0x16, 0x03, 0x03, 0x00, 0x20], // Mock Certificate
+            vec![0x16, 0x03, 0x03, 0x00, 0x10], // Mock CertificateVerify
+            vec![0x16, 0x03, 0x03, 0x00, 0x10], // Mock ServerFinished
+            [1u8; 32],                          // Mock private key
+            vec![vec![0x30, 0x82, 0x01, 0x00]], // Mock certificate chain
+            vec![0x17, 0x03, 0x03, 0x00, 0x10], // Mock encrypted_request
+            vec![0x17, 0x03, 0x03, 0x00, 0x10], // Mock encrypted_response
+            "example.com".to_string(),
+            1234567890,
+            200,
+            [5u8; 32], // cert_fingerprint
+        )
+        .unwrap();
+
         let payload = VerifyProofPayload {
             proof: proof_data,
             expected_claim: Some(claim),
+            bundle,
         };
 
         assert!(payload.validate().is_ok());

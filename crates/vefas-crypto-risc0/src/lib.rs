@@ -780,6 +780,92 @@ impl Kdf for RISC0CryptoProvider {
     fn has_precompile_support(&self) -> bool {
         true // RISC0 has SHA-256 precompile support for HKDF
     }
+
+    fn hkdf_expand_label(
+        &self,
+        secret: &[u8],
+        label: &[u8],
+        context: &[u8],
+        length: usize,
+    ) -> VefasResult<Vec<u8>> {
+        // TLS 1.3 HKDF-Expand-Label format per RFC 8446
+        let mut hkdf_label = Vec::new();
+        hkdf_label.extend_from_slice(&(length as u16).to_be_bytes());
+        hkdf_label.push(6 + label.len() as u8);
+        hkdf_label.extend_from_slice(b"tls13 ");
+        hkdf_label.extend_from_slice(label);
+        hkdf_label.push(context.len() as u8);
+        hkdf_label.extend_from_slice(context);
+
+        // Convert secret to fixed-size array for HKDF
+        let prk = if secret.len() == 32 {
+            let mut prk_array = [0u8; 32];
+            prk_array.copy_from_slice(secret);
+            prk_array
+        } else {
+            self.hkdf_extract(&[], secret)
+        };
+
+        self.hkdf_expand(&prk, &hkdf_label, length)
+    }
+
+    fn derive_handshake_secrets(
+        &self,
+        shared_secret: &[u8],
+        handshake_hash: &[u8; 32],
+    ) -> VefasResult<([u8; 32], [u8; 32])> {
+        let handshake_secret = self.hkdf_extract(&[0u8; 32], shared_secret);
+
+        let client_secret =
+            self.hkdf_expand_label(&handshake_secret, b"c hs traffic", handshake_hash, 32)?;
+
+        let server_secret =
+            self.hkdf_expand_label(&handshake_secret, b"s hs traffic", handshake_hash, 32)?;
+
+        let mut client_array = [0u8; 32];
+        let mut server_array = [0u8; 32];
+        client_array.copy_from_slice(&client_secret);
+        server_array.copy_from_slice(&server_secret);
+
+        Ok((client_array, server_array))
+    }
+
+    fn derive_application_secrets(
+        &self,
+        handshake_secret: &[u8; 32],
+        handshake_hash: &[u8; 32],
+    ) -> VefasResult<([u8; 32], [u8; 32])> {
+        let master_secret = self.hkdf_expand_label(
+            handshake_secret,
+            b"derived",
+            &self.hkdf_extract(&[], &[]),
+            32,
+        )?;
+
+        let master_array = if master_secret.len() == 32 {
+            let mut array = [0u8; 32];
+            array.copy_from_slice(&master_secret);
+            array
+        } else {
+            return Err(VefasError::crypto_error(
+                vefas_types::errors::CryptoErrorType::InvalidKeyLength,
+                "invalid master secret length",
+            ));
+        };
+
+        let client_secret =
+            self.hkdf_expand_label(&master_array, b"c ap traffic", handshake_hash, 32)?;
+
+        let server_secret =
+            self.hkdf_expand_label(&master_array, b"s ap traffic", handshake_hash, 32)?;
+
+        let mut client_array = [0u8; 32];
+        let mut server_array = [0u8; 32];
+        client_array.copy_from_slice(&client_secret);
+        server_array.copy_from_slice(&server_secret);
+
+        Ok((client_array, server_array))
+    }
 }
 
 impl KeyExchange for RISC0CryptoProvider {

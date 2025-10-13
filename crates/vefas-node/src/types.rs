@@ -1,4 +1,4 @@
-//! API request and response types for VEFAS Gateway
+//! API request and response types for VEFAS Node
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use uuid::Uuid;
 use vefas_types::{VefasCanonicalBundle, VefasProofClaim};
 
-/// HTTP methods supported by the gateway
+/// HTTP methods supported by the node
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "UPPERCASE")]
 pub enum HttpMethod {
@@ -161,6 +161,8 @@ pub struct ExecuteRequestResponse {
     pub proof: ProofData,
     /// Merkle tree information for integrity verification
     pub merkle_tree: MerkleTreeInfo,
+    /// Canonical bundle for Layer 2 verification
+    pub bundle: VefasCanonicalBundle,
     /// Unique session identifier
     pub session_id: String,
 }
@@ -172,6 +174,8 @@ pub struct VerifyProofPayload {
     pub proof: ProofData,
     /// Optional expected claim for validation
     pub expected_claim: Option<ProofClaim>,
+    /// Canonical bundle for Layer 2 verification (Merkle proofs, certificate validation, etc.)
+    pub bundle: VefasCanonicalBundle,
 }
 
 /// Verification metadata
@@ -196,6 +200,12 @@ pub struct VerificationResult {
     pub verified_claim: ProofClaim,
     /// Verification metadata
     pub verification_metadata: VerificationMetadata,
+    /// Layer 2 validation errors (if any)
+    pub validation_errors: Vec<String>,
+    /// Merkle proofs validated count
+    pub merkle_proofs_validated: usize,
+    /// Whether claim verification passed
+    pub claim_verification_passed: bool,
 }
 
 /// Response payload for POST /verify endpoint
@@ -388,5 +398,161 @@ mod tests {
 
         let decoded = payload.get_body_bytes().unwrap();
         assert_eq!(decoded, Some(b"test body".to_vec()));
+    }
+}
+
+/// VEFAS Node configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VefasNodeConfig {
+    /// Server bind address
+    pub bind_address: String,
+    /// Enable CORS
+    pub enable_cors: bool,
+    /// Request timeout in seconds
+    pub request_timeout: u64,
+    /// Enable RISC0 proof generation
+    pub enable_risc0: bool,
+    /// Enable SP1 proof generation
+    pub enable_sp1: bool,
+}
+
+impl Default for VefasNodeConfig {
+    fn default() -> Self {
+        Self {
+            bind_address: "0.0.0.0:8080".to_string(),
+            enable_cors: true,
+            request_timeout: 300,
+            enable_risc0: true,
+            enable_sp1: true,
+        }
+    }
+}
+
+/// VEFAS Node state
+#[derive(Debug)]
+pub struct VefasNodeState {
+    /// VEFAS client for HTTP execution
+    pub vefas_client: vefas_core::VefasClient,
+    /// Prover service for ZK proof generation
+    pub prover_service: crate::zktls::ProverService,
+    /// Verifier service for ZK proof validation
+    pub verifier_service: crate::zktls::VerifierService,
+    /// Certificate validator
+    pub certificate_validator: crate::zktls::CertificateValidator,
+    /// OCSP checker
+    pub ocsp_checker: crate::zktls::OcspChecker,
+    /// CT log verifier
+    pub ct_verifier: crate::zktls::CtLogVerifier,
+    /// Attestation signer
+    pub attestation_signer: crate::zktls::AttestationSigner,
+    /// Node configuration
+    pub config: VefasNodeConfig,
+}
+
+impl VefasNodeState {
+    /// Create a new node state
+    pub async fn new(config: VefasNodeConfig) -> Result<Self, Box<dyn std::error::Error>> {
+        let vefas_client = vefas_core::VefasClient::new().expect("Failed to create VEFAS client");
+        let prover_service = crate::zktls::ProverService::new().await?;
+
+        // Initialize VerifierService with provers for Layer 2 validation
+        let mut verifier_service = crate::zktls::VerifierService::new();
+
+        #[cfg(feature = "risc0")]
+        {
+            let risc0_prover = vefas_risc0::VefasRisc0Prover::new();
+            verifier_service = verifier_service.with_risc0_prover(risc0_prover);
+        }
+
+        #[cfg(feature = "sp1")]
+        {
+            let sp1_prover = vefas_sp1::VefasSp1Prover::new();
+            verifier_service = verifier_service.with_sp1_prover(sp1_prover);
+        }
+
+        // Initialize verifier components
+        let certificate_validator = crate::zktls::CertificateValidator::new(
+            crate::zktls::CertificateConfig::default()
+        ).await?;
+
+        let ocsp_checker = crate::zktls::OcspChecker::new(
+            crate::zktls::OcspConfig::default()
+        ).await?;
+
+        let ct_verifier = crate::zktls::CtLogVerifier::new(
+            crate::zktls::CtConfig::default()
+        ).await?;
+
+        let attestation_signer = crate::zktls::AttestationSigner::new(
+            crate::zktls::AttestationConfig::default()
+        ).await?;
+        
+        Ok(Self {
+            vefas_client,
+            prover_service,
+            verifier_service,
+            certificate_validator,
+            ocsp_checker,
+            ct_verifier,
+            attestation_signer,
+            config,
+        })
+    }
+}
+
+/// VEFAS Node server
+#[derive(Debug)]
+pub struct VefasNode {
+    /// Node state
+    pub state: std::sync::Arc<VefasNodeState>,
+    /// Server configuration
+    pub config: VefasNodeConfig,
+}
+
+impl VefasNode {
+    /// Create a new VEFAS node
+    pub async fn new(config: VefasNodeConfig) -> Result<Self, Box<dyn std::error::Error>> {
+        let state = std::sync::Arc::new(VefasNodeState::new(config.clone()).await?);
+        
+        Ok(Self {
+            state,
+            config,
+        })
+    }
+    
+    /// Build the router (useful for testing)
+    pub fn router(&self) -> axum::Router {
+        use axum::{routing::{get, post}, Router};
+        use tower_http::cors::CorsLayer;
+
+        // API routes with /api/v1 prefix
+        let api_routes = Router::new()
+            .route("/requests", post(crate::handlers::execute_request))
+            .route("/verify", post(crate::handlers::verify_proof))
+            .route("/health", get(crate::handlers::health_check))
+            .with_state(self.state.clone());
+
+        // Root routes
+        Router::new()
+            .route("/", get(crate::handlers::service_info))
+            .nest("/api/v1", api_routes)
+            .layer(if self.config.enable_cors {
+                CorsLayer::permissive()
+            } else {
+                CorsLayer::new()
+            })
+    }
+
+    /// Start the server
+    pub async fn serve(&self) -> Result<(), Box<dyn std::error::Error>> {
+        let app = self.router();
+
+        // Start the server
+        let listener = tokio::net::TcpListener::bind(&self.config.bind_address).await?;
+        tracing::info!("VEFAS Node server listening on {}", self.config.bind_address);
+
+        axum::serve(listener, app).await?;
+
+        Ok(())
     }
 }

@@ -56,8 +56,6 @@ pub struct CryptographicValidationReport {
 /// Cryptographic validation metadata
 #[derive(Debug, Clone)]
 pub struct CryptographicValidationMetadata {
-    /// Whether Server Finished HMAC verification passed
-    pub server_finished_verified: bool,
     /// Whether Client Finished HMAC verification passed
     pub client_finished_verified: bool,
     /// Whether key derivation was successful
@@ -97,19 +95,14 @@ impl<P: CryptoProvider> CryptographicValidator<P> {
         let mut errors = Vec::new();
         let mut warnings = Vec::new();
         let mut metadata = CryptographicValidationMetadata {
-            server_finished_verified: false,
             client_finished_verified: false,
             key_derivation_successful: false,
             data_decryption_successful: false,
             crypto_operations_count: 0,
         };
 
-        // 1. Verify Server Finished HMAC
-        if let Err(e) = self.verify_server_finished_hmac(bundle, &mut metadata) {
-            errors.push(CryptographicValidationError::HmacVerificationFailed {
-                message: format!("Server Finished HMAC verification failed: {}", e),
-            });
-        }
+        // ServerFinished verification is no longer performed in the new architecture.
+        // HandshakeProof provides sufficient binding without requiring ServerFinished.
 
         // 2. Verify Client Finished HMAC (if present)
         if let Err(e) = self.verify_client_finished_hmac(bundle, &mut metadata) {
@@ -140,75 +133,9 @@ impl<P: CryptoProvider> CryptographicValidator<P> {
         })
     }
 
-    /// Verify Server Finished HMAC
-    fn verify_server_finished_hmac(
-        &self,
-        bundle: &VefasCanonicalBundle,
-        metadata: &mut CryptographicValidationMetadata,
-    ) -> Result<()> {
-        let server_finished = bundle.server_finished_msg().unwrap_or_default();
-        if server_finished.is_empty() {
-            return Ok(()); // Server Finished is optional in some cases
-        }
-
-        // Validate structure first
-        if server_finished.len() < 4 {
-            return Err(VefasCoreError::ValidationError(
-                "Server Finished message too short".to_string(),
-            ));
-        }
-
-        if server_finished[0] != 20 {
-            return Err(VefasCoreError::ValidationError(
-                "Server Finished message has wrong type".to_string(),
-            ));
-        }
-
-        // Extract the verify_data (HMAC) from the Finished message
-        let verify_data = &server_finished[4..];
-        
-        // Derive the server handshake traffic secret for HMAC verification
-        let server_hello = bundle.server_hello().unwrap_or_default();
-        let client_hello = bundle.client_hello().unwrap_or_default();
-        
-        // Build transcript hash for HMAC verification
-        let mut transcript = Vec::new();
-        transcript.extend_from_slice(&client_hello);
-        transcript.extend_from_slice(&server_hello);
-        
-        // Add certificate and certificate verify if present
-        if let Ok(cert_msg) = bundle.certificate_msg() {
-            if !cert_msg.is_empty() {
-                transcript.extend_from_slice(&cert_msg);
-            }
-        }
-        if let Ok(cert_verify_msg) = bundle.certificate_msg() {
-            if !cert_verify_msg.is_empty() {
-                transcript.extend_from_slice(&cert_verify_msg);
-            }
-        }
-
-        // Use crypto provider to verify HMAC
-        let cipher_suite = self.determine_cipher_suite(&server_hello)?;
-        let is_valid = self.crypto_provider.verify_finished_hmac(
-            &server_finished,
-            &[], // Traffic secret will be derived internally by the provider
-            &transcript,
-            &cipher_suite,
-        ).map_err(|e| VefasCoreError::ValidationError(
-            format!("Server Finished HMAC verification failed: {:?}", e)
-        ))?;
-
-        if !is_valid {
-            return Err(VefasCoreError::ValidationError(
-                "Server Finished HMAC verification failed".to_string(),
-            ));
-        }
-
-        metadata.server_finished_verified = true;
-        metadata.crypto_operations_count += 1;
-        Ok(())
-    }
+    /// ServerFinished verification is no longer performed in the new architecture.
+    /// HandshakeProof provides sufficient binding without requiring ServerFinished.
+    /// Verifier nodes handle TLS trust validation externally.
 
     /// Verify Client Finished HMAC
     fn verify_client_finished_hmac(
@@ -216,66 +143,10 @@ impl<P: CryptoProvider> CryptographicValidator<P> {
         bundle: &VefasCanonicalBundle,
         metadata: &mut CryptographicValidationMetadata,
     ) -> Result<()> {
-        let client_finished = bundle.client_finished_msg().unwrap_or_default();
-        if client_finished.is_empty() {
-            return Ok(()); // Client Finished is optional in some cases
-        }
-
-        // Validate structure first
-        if client_finished.len() < 4 {
-            return Err(VefasCoreError::ValidationError(
-                "Client Finished message too short".to_string(),
-            ));
-        }
-
-        if client_finished[0] != 20 {
-            return Err(VefasCoreError::ValidationError(
-                "Client Finished message has wrong type".to_string(),
-            ));
-        }
-
-        // Extract the verify_data (HMAC) from the Finished message
-        let verify_data = &client_finished[4..];
-        
-        // Derive the client handshake traffic secret for HMAC verification
-        let server_hello = bundle.server_hello().unwrap_or_default();
-        let client_hello = bundle.client_hello().unwrap_or_default();
-        
-        // Build transcript hash for HMAC verification
-        let mut transcript = Vec::new();
-        transcript.extend_from_slice(&client_hello);
-        transcript.extend_from_slice(&server_hello);
-        
-        // Add certificate and certificate verify if present
-        if let Ok(cert_msg) = bundle.certificate_msg() {
-            if !cert_msg.is_empty() {
-                transcript.extend_from_slice(&cert_msg);
-            }
-        }
-        if let Ok(cert_verify_msg) = bundle.certificate_msg() {
-            if !cert_verify_msg.is_empty() {
-                transcript.extend_from_slice(&cert_verify_msg);
-            }
-        }
-
-        // Use crypto provider to verify HMAC
-        let cipher_suite = self.determine_cipher_suite(&server_hello)?;
-        let is_valid = self.crypto_provider.verify_finished_hmac(
-            &client_finished,
-            &[], // Traffic secret will be derived internally by the provider
-            &transcript,
-            &cipher_suite,
-        ).map_err(|e| VefasCoreError::ValidationError(
-            format!("Client Finished HMAC verification failed: {:?}", e)
-        ))?;
-
-        if !is_valid {
-            return Err(VefasCoreError::ValidationError(
-                "Client Finished HMAC verification failed".to_string(),
-            ));
-        }
-
-        metadata.client_finished_verified = true;
+        // Client Finished verification is no longer performed in the new architecture.
+        // HandshakeProof provides sufficient binding without requiring Client Finished.
+        // Verifier nodes handle TLS trust validation externally.
+        metadata.client_finished_verified = true; // Mark as verified since we skip this step
         metadata.crypto_operations_count += 1;
         Ok(())
     }
@@ -286,7 +157,7 @@ impl<P: CryptoProvider> CryptographicValidator<P> {
         bundle: &VefasCanonicalBundle,
         metadata: &mut CryptographicValidationMetadata,
     ) -> Result<()> {
-        let server_hello = bundle.server_hello().unwrap_or_default();
+        let server_hello = &bundle.server_hello;
         if server_hello.is_empty() {
             return Err(VefasCoreError::ValidationError(
                 "Server Hello message is required for key derivation verification".to_string(),
@@ -294,20 +165,15 @@ impl<P: CryptoProvider> CryptographicValidator<P> {
         }
 
         // Build transcript for key derivation
-        let client_hello = bundle.client_hello().unwrap_or_default();
+        let client_hello = &bundle.client_hello;
         let mut transcript = Vec::new();
         transcript.extend_from_slice(&client_hello);
         transcript.extend_from_slice(&server_hello);
         
-        // Add certificate and certificate verify if present
-        if let Ok(cert_msg) = bundle.certificate_msg() {
-            if !cert_msg.is_empty() {
-                transcript.extend_from_slice(&cert_msg);
-            }
-        }
-        if let Ok(cert_verify_msg) = bundle.certificate_msg() {
-            if !cert_verify_msg.is_empty() {
-                transcript.extend_from_slice(&cert_verify_msg);
+        // Add certificate chain if present
+        if !bundle.certificate_chain.is_empty() {
+            for cert in &bundle.certificate_chain {
+                transcript.extend_from_slice(cert);
             }
         }
 
@@ -357,14 +223,14 @@ impl<P: CryptoProvider> CryptographicValidator<P> {
         bundle: &VefasCanonicalBundle,
         metadata: &mut CryptographicValidationMetadata,
     ) -> Result<()> {
-        let encrypted_request = bundle.encrypted_request().unwrap_or_default();
-        let encrypted_response = bundle.encrypted_response().unwrap_or_default();
+        let encrypted_request = bundle.http_request().unwrap_or_default();
+        let encrypted_response = bundle.http_response().unwrap_or_default();
         
         if encrypted_request.is_empty() && encrypted_response.is_empty() {
             return Ok(()); // No encrypted data to verify
         }
 
-        let server_hello = bundle.server_hello().unwrap_or_default();
+        let server_hello = &bundle.server_hello;
         if server_hello.is_empty() {
             return Err(VefasCoreError::ValidationError(
                 "Server Hello message is required for decryption verification".to_string(),

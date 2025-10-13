@@ -12,7 +12,7 @@
 //! ## What this program verifies:
 //!
 //! 1. **Merkle Tree Integrity**: Verifies Merkle proofs for essential TLS components
-//! 2. **Finished Message**: Verifies ServerFinished using HKDF + HMAC
+//! 2. **HandshakeProof Integrity**: Verifies HandshakeProof binding and consistency
 //! 3. **HTTP Data Integrity**: Verifies HTTP request/response using Merkle proofs
 //! 4. **Domain Binding**: Verifies domain claim using Merkle proofs
 //!
@@ -26,10 +26,10 @@
 #![no_std]
 
 extern crate alloc;
-use alloc::{format, string::{String, ToString}, vec::{self, Vec}};
+use alloc::{format, string::{String, ToString}, vec::Vec};
 use vefas_types::{
     VefasCanonicalBundle, VefasResult, VefasError,
-    compression::CompressionStats, VefasProofClaim, VefasPerformanceMetrics, VefasExecutionMetadata,
+    VefasProofClaim, VefasPerformanceMetrics, VefasExecutionMetadata,
     errors::CryptoErrorType
 };
 use vefas_crypto_sp1::{create_sp1_provider, SP1CryptoProvider};
@@ -37,11 +37,19 @@ use vefas_crypto::{
     FieldId, MerkleProof, MerkleVerifier,
     traits::Hash,
     hex_lower,
+    bundle_parser::{ZkvmLogger, extract_http_request, extract_http_response, parse_http_request, parse_http_response},
 };
 use bincode;
 
-// Selective disclosure extraction module
-mod selective_extraction;
+// SP1-specific logger implementation
+struct Sp1Logger;
+
+impl ZkvmLogger for Sp1Logger {
+    fn log(&self, message: &str) {
+        #[cfg(debug_assertions)]
+        sp1_zkvm::io::commit(&message.to_string());
+    }
+}
 
 // Use sp1_zkvm::io::commit for debug output in zkVM (but only in debug builds)
 #[cfg(debug_assertions)]
@@ -83,18 +91,11 @@ pub fn main() {
     // Log comprehensive performance summary following SP1 patterns
     eprintln!("SP1 VEFAS verification completed with simplified Merkle verification:");
     eprintln!("  - Total execution: {} cycles", claim.performance.total_cycles);
-    eprintln!("  - Bundle decompression: {} cycles", claim.performance.decompression_cycles);
-    eprintln!("  - Merkle verification: {} cycles", claim.performance.validation_cycles);
-    eprintln!("  - Finished verification: {} cycles", claim.performance.handshake_cycles);
+    eprintln!("  - Merkle verification: {} cycles", claim.performance.merkle_verification_cycles);
     eprintln!("  - HTTP verification: {} cycles", claim.performance.http_parsing_cycles);
-    eprintln!("  - Crypto operations: {} cycles", claim.performance.crypto_operations_cycles);
+    eprintln!("  - HandshakeProof verification: {} cycles", claim.performance.crypto_operations_cycles);
+    eprintln!("  - Content hashing: {} cycles", claim.performance.crypto_operations_cycles);
     eprintln!("  - Memory usage: {} bytes", claim.performance.memory_usage);
-
-    if let Some(_ratio) = claim.performance.compression_ratio {
-        eprintln!("  - Compression ratio: {:.1}%", _ratio);
-        eprintln!("  - Original size: {} bytes", claim.performance.original_bundle_size.unwrap_or(0));
-        eprintln!("  - Decompressed size: {} bytes", claim.performance.decompressed_bundle_size.unwrap_or(0));
-    }
 
     // Commit the claim to the public outputs
     sp1_zkvm::io::commit(&claim);
@@ -104,7 +105,7 @@ pub fn main() {
 ///
 /// This function performs minimal verification that proves:
 /// 1. Merkle tree integrity for essential TLS components
-/// 2. ServerFinished message validity using HKDF + HMAC
+/// 2. HandshakeProof integrity and binding consistency
 /// 3. HTTP data integrity using Merkle proofs
 /// 4. Domain and timing claims are accurate
 ///
@@ -112,60 +113,36 @@ pub fn main() {
 fn verify_vefas_bundle(bundle: &VefasCanonicalBundle) -> VefasResult<VefasProofClaim> {
     let mut performance = VefasPerformanceMetrics {
         total_cycles: 0,
-        decompression_cycles: 0,
-        validation_cycles: 0,
-        handshake_cycles: 0,
-        certificate_validation_cycles: 0,
-        key_derivation_cycles: 0,
-        decryption_cycles: 0,
+        merkle_verification_cycles: 0,
         http_parsing_cycles: 0,
-        crypto_operations_cycles: 0,
+        crypto_operations_cycles: 0, // Now used for HandshakeProof verification
         memory_usage: 0,
-        compression_ratio: None,
-        original_bundle_size: None,
-        decompressed_bundle_size: None,
     };
     let crypto = create_sp1_provider();
 
-    // Step 1: Handle bundle decompression with cycle tracking
-    println!("cycle-tracker-start: bundle_decompression");
-    let (decompressed_bundle, compression_stats) = decompress_bundle_if_needed(bundle)?;
-    
-    // Debug assertions for decompression
-    assert!(!decompressed_bundle.domain.is_empty(), "Decompressed bundle domain should not be empty");
-    assert!(decompressed_bundle.timestamp > 0, "Decompressed bundle timestamp should be positive");
-    
-    println!("cycle-tracker-end: bundle_decompression");
-
-    // Update compression statistics
-    if let Some(stats) = compression_stats {
-        performance.compression_ratio = Some(stats.compression_ratio());
-        performance.original_bundle_size = Some(stats.compressed_size);
-        performance.decompressed_bundle_size = Some(stats.original_size);
-    }
-
-    // Step 2: Verify Merkle proofs for essential fields with cycle tracking
+    // Step 1: Verify Merkle proofs for essential fields with cycle tracking
     println!("cycle-tracker-start: merkle_verification");
-    verify_merkle_proofs(&decompressed_bundle)?;
+    verify_merkle_proofs(bundle)?;
     println!("cycle-tracker-end: merkle_verification");
 
-    // Step 3: ServerFinished verification (SKIPPED - same as RISC0)
-    // NOTE: ServerFinished verification requires full TLS 1.3 key schedule implementation (RFC 8446 Section 7.1)
-    // This includes: HKDF-Extract, HKDF-Expand-Label with proper TLS context, and Derive-Secret
-    // Temporarily skipped to complete E2E flow - Merkle proofs already provide data integrity
-    println!("cycle-tracker-start: finished_verification");
-    eprintln!("SP1: ServerFinished verification SKIPPED (requires full TLS 1.3 key schedule)");
-    println!("cycle-tracker-end: finished_verification");
+    // ServerFinished verification is no longer performed in the new architecture.
+    // HandshakeProof provides sufficient binding without requiring ServerFinished.
+    // Verifier nodes handle TLS trust validation externally.
 
-    // Step 4: Verify HTTP data integrity using Merkle proofs with cycle tracking
+    // Step 2: Verify HTTP data integrity using Merkle proofs with cycle tracking
     println!("cycle-tracker-start: http_verification");
-    let (method, path, status_code) = verify_http_data(&decompressed_bundle)?;
+    let (method, path, status_code) = verify_http_data(bundle)?;
     println!("cycle-tracker-end: http_verification");
 
-    // Step 5: Compute content hashes and additional claims with cycle tracking
+    // Step 3: Add HandshakeProof integrity verification
     println!("cycle-tracker-start: crypto_operations");
-    let request_hash = hex_lower(crypto.sha256(&decompressed_bundle.encrypted_request()?).as_slice());
-    let response_hash = hex_lower(crypto.sha256(&decompressed_bundle.encrypted_response()?).as_slice());
+    verify_handshake_proof_integrity(bundle)?;
+    println!("cycle-tracker-end: crypto_operations");
+
+    // Step 4: Compute content hashes with cycle tracking
+    println!("cycle-tracker-start: content_hashing");
+    let request_hash = hex_lower(crypto.sha256(&bundle.http_request()?).as_slice());
+    let response_hash = hex_lower(crypto.sha256(&bundle.http_response()?).as_slice());
 
     // Generate commitments
     let request_commitment: [u8; 32] = crypto.sha256(request_hash.as_bytes()).try_into()
@@ -173,10 +150,10 @@ fn verify_vefas_bundle(bundle: &VefasCanonicalBundle) -> VefasResult<VefasProofC
     let response_commitment: [u8; 32] = crypto.sha256(response_hash.as_bytes()).try_into()
         .map_err(|_| VefasError::crypto_error(CryptoErrorType::HashFailed, "Response commitment generation failed"))?;
 
-    println!("cycle-tracker-end: crypto_operations");
+    println!("cycle-tracker-end: content_hashing");
 
-    // Estimate memory usage (works with both compressed and decompressed bundles)
-    performance.memory_usage = estimate_memory_usage(&decompressed_bundle);
+    // Estimate memory usage
+    performance.memory_usage = estimate_memory_usage(bundle);
 
     // Note: Total cycles will be populated by the host from cycle tracker data
     // Individual stage cycles are tracked via println! statements
@@ -190,8 +167,8 @@ fn verify_vefas_bundle(bundle: &VefasCanonicalBundle) -> VefasResult<VefasProofC
         proof_time_ms: 0, // Will be filled by host
     };
 
-    // Extract cipher suite from CryptoWitness composite field
-    let cipher_suite_code = selective_extraction::extract_cipher_suite(&decompressed_bundle)?;
+    // Extract cipher suite directly from bundle (now available as direct field)
+    let cipher_suite_code = bundle.cipher_suite;
     let cipher_suite_name = match cipher_suite_code {
         0x1301 => "TLS_AES_128_GCM_SHA256",
         0x1302 => "TLS_AES_256_GCM_SHA384",
@@ -201,7 +178,7 @@ fn verify_vefas_bundle(bundle: &VefasCanonicalBundle) -> VefasResult<VefasProofC
 
     Ok(VefasProofClaim {
         version: 1, // VEFAS protocol version
-        domain: decompressed_bundle.domain.clone(),
+        domain: bundle.domain.clone(),
         method,
         path,
         request_commitment,
@@ -209,11 +186,17 @@ fn verify_vefas_bundle(bundle: &VefasCanonicalBundle) -> VefasResult<VefasProofC
         request_hash,
         response_hash,
         status_code,
-        tls_version: "1.3".to_string(),
+        tls_version: match bundle.tls_version {
+            0x0303 => "1.2".to_string(),
+            0x0304 => "1.3".to_string(),
+            _ => "unknown".to_string(),
+        },
         cipher_suite: cipher_suite_name.to_string(),
-        certificate_chain_hash: [0u8; 32], // From Merkle proof
-        handshake_transcript_hash: [0u8; 32], // From Merkle proof
-        timestamp: decompressed_bundle.timestamp,
+        certificate_chain_hash: [0u8; 32], // Placeholder - heavy crypto removed
+        handshake_transcript_hash: [0u8; 32], // Placeholder - heavy crypto removed
+        cert_fingerprint: bundle.cert_fingerprint, // Now directly available
+        proof_id: [0u8; 32], // Will be generated after proof
+        timestamp: bundle.timestamp,
         performance,
         execution_metadata,
     })
@@ -257,17 +240,10 @@ fn verify_or_panic(bundle: &VefasCanonicalBundle) -> VefasProofClaim {
     }
 }
 
-/// Handle bundle decompression if needed, with cycle tracking
-/// Returns the decompressed bundle and optional compression statistics
-fn decompress_bundle_if_needed(bundle: &VefasCanonicalBundle) -> VefasResult<(VefasCanonicalBundle, Option<CompressionStats>)> {
-    if bundle.is_compressed() {
-        let mut decompressed_bundle = bundle.clone();
-        let compression_stats = bundle.compression_stats().cloned();
-        decompressed_bundle.decompress()?;
-        Ok((decompressed_bundle, compression_stats))
-    } else {
-        Ok((bundle.clone(), None))
-    }
+/// Estimate memory usage for the bundle
+fn estimate_memory_usage(bundle: &VefasCanonicalBundle) -> usize {
+    // Use the bundle's own memory footprint calculation
+    bundle.memory_footprint()
 }
 
 /// Verify Merkle proofs for essential TLS components with cycle tracking
@@ -280,8 +256,7 @@ fn verify_merkle_proofs(bundle: &VefasCanonicalBundle) -> VefasResult<()> {
     eprintln!("SP1: Verifying 6 Merkle proofs (selective disclosure)");
     
     // Get Merkle root from bundle
-    let merkle_root = bundle.merkle_root()
-        .ok_or_else(|| VefasError::invalid_input("merkle_root", "Merkle root not found in bundle"))?;
+      let merkle_root = bundle.merkle_root;
     
     eprintln!("SP1: Merkle root: {:02x?}", merkle_root);
     eprintln!("SP1: Bundle has {} proofs", bundle.merkle_proofs.len());
@@ -298,7 +273,7 @@ fn verify_merkle_proofs(bundle: &VefasCanonicalBundle) -> VefasResult<()> {
         (FieldId::Timestamp, "Timestamp"),
         // Internal composite fields (performance)
         (FieldId::HandshakeProof, "HandshakeProof"),
-        (FieldId::CryptoWitness, "CryptoWitness"),
+        (FieldId::TlsVersion, "TlsVersion"),
     ];
     
     for (field_id, field_name) in fields {
@@ -317,7 +292,7 @@ fn verify_merkle_proofs(bundle: &VefasCanonicalBundle) -> VefasResult<()> {
         
         // Verify the Merkle proof using the proof's leaf_value directly
         let is_valid = verifier.verify_inclusion_proof(
-            merkle_root,
+            &merkle_root,
             &proof,
             field_id,
             &proof.leaf_value,
@@ -340,19 +315,19 @@ fn verify_http_data(bundle: &VefasCanonicalBundle) -> VefasResult<(String, Strin
     eprintln!("SP1: Starting HTTP data verification (selective disclosure)");
     
     // Extract HTTP request from its own Merkle proof
-    let request_bytes = selective_extraction::extract_http_request(bundle)?;
+    let request_bytes = extract_http_request(bundle)?;
     eprintln!("SP1: Extracted HTTP request ({} bytes)", request_bytes.len());
     
     // Parse HTTP request to extract method and path
-    let (method, path) = selective_extraction::parse_http_request(&request_bytes)?;
+    let (method, path) = parse_http_request(&request_bytes)?;
     eprintln!("SP1: Parsed HTTP request - method: {}, path: {}", method, path);
     
     // Extract HTTP response from its own Merkle proof
-    let response_bytes = selective_extraction::extract_http_response(bundle)?;
+    let response_bytes = extract_http_response(bundle)?;
     eprintln!("SP1: Extracted HTTP response ({} bytes)", response_bytes.len());
     
     // Parse HTTP response to extract status code
-    let status_code = selective_extraction::parse_http_response(&response_bytes)?;
+    let status_code = parse_http_response(&response_bytes)?;
     eprintln!("SP1: Parsed HTTP response - status: {}", status_code);
     
     // Verify status code matches expected value
@@ -369,8 +344,29 @@ fn verify_http_data(bundle: &VefasCanonicalBundle) -> VefasResult<(String, Strin
     Ok((method, path, status_code))
 }
 
-// NOTE: Old extraction and key derivation functions removed - now using selective_extraction module
-// ServerFinished verification is skipped in selective disclosure architecture for cycle efficiency
+/// HandshakeProof integrity verification with cycle tracking
+#[sp1_derive::cycle_tracker]
+fn verify_handshake_proof_integrity(bundle: &VefasCanonicalBundle) -> VefasResult<()> {
+    eprintln!("SP1: Starting HandshakeProof integrity verification");
+    
+    // Build HandshakeProof from bundle
+    let handshake_proof = vefas_crypto::bundle_parser::build_handshake_proof(bundle)?;
+    eprintln!("SP1: Built HandshakeProof successfully");
+    
+    // Validate HandshakeProof structure
+    handshake_proof.validate()?;
+    eprintln!("SP1: HandshakeProof structure validation passed");
+    
+    // Verify HandshakeProof integrity against bundle data
+    vefas_crypto::validation::validate_handshake_proof_integrity(&handshake_proof, bundle)?;
+    eprintln!("SP1: HandshakeProof integrity verification passed");
+    
+    eprintln!("SP1: HandshakeProof verification completed successfully");
+    Ok(())
+}
+
+// NOTE: Old extraction and key derivation functions removed - now using bundle_parser module
+// ServerFinished verification is no longer needed in HandshakeProof architecture
 
 /// Constant-time comparison for security
 fn verify_constant_time_comparison(a: &[u8], b: &[u8]) -> bool {
@@ -384,11 +380,6 @@ fn verify_constant_time_comparison(a: &[u8], b: &[u8]) -> bool {
     a.ct_eq(b).into()
 }
 
-/// Estimate memory usage for the bundle (works with both compressed and uncompressed)
-fn estimate_memory_usage(bundle: &VefasCanonicalBundle) -> usize {
-    // Use the bundle's own memory footprint calculation which handles compression
-    bundle.memory_footprint()
-}
 
 #[cfg(test)]
 mod tests {
@@ -404,55 +395,60 @@ mod tests {
         let bundle = VefasCanonicalBundle::new(
             vec![0x01], // client_hello
             vec![0x02], // server_hello
-            Vec::new(), // certificate_msg
-            Vec::new(), // certificate_verify_msg
-            Vec::new(), // server_finished_msg
-            [0u8; 32], // client_private_key
             Vec::new(), // certificate_chain
             {
                 let mut v = vec![23, 3, 3, 0, 1];
                 v.extend_from_slice(&[0u8; 1]);
                 v
-            }, // encrypted_request
+            }, // http_request
             {
                 let mut v = vec![23, 3, 3, 0, 1];
                 v.extend_from_slice(&[0u8; 1]);
                 v
-            }, // encrypted_response
+            }, // http_response
             String::new(), // domain (empty - should cause validation error)
             0, // timestamp
             200, // expected_status
             [0u8; 32], // verifier_nonce
+            0x0303, // tls_version
+            0x1301, // cipher_suite
+            [0u8; 32], // server_random
+            [0u8; 32], // cert_fingerprint
+            None, // session_id
+            None, // session_ticket
+            false, // handshake_complete
+            true, // application_data_present
         ).unwrap_or_else(|_| {
             // If bundle creation fails due to validation, create manually for test
-            use vefas_types::bundle::{VefasCanonicalBundle, BundleStorage, UncompressedBundleData};
             VefasCanonicalBundle {
-                version: vefas_types::VEFAS_PROTOCOL_VERSION,
-                compression_version: 0,
-                storage: BundleStorage::Uncompressed(UncompressedBundleData {
-                    client_hello: vec![0x01],
-                    server_hello: vec![0x02],
-                    certificate_msg: Vec::new(),
-                    certificate_verify_msg: Vec::new(),
-                    server_finished_msg: Vec::new(),
-                    client_finished_msg: Vec::new(),
-                    client_private_key: [0u8; 32],
-                    certificate_chain: Vec::new(),
-                    encrypted_request: {
-                        let mut v = vec![23, 3, 3, 0, 1];
-                        v.extend_from_slice(&[0u8; 1]);
-                        v
-                    },
-                    encrypted_response: {
-                        let mut v = vec![23, 3, 3, 0, 1];
-                        v.extend_from_slice(&[0u8; 1]);
-                        v
-                    },
-                }),
+                version: vefas_types::VEFAS_PROTOCOL_VERSION as u8,
                 domain: String::new(), // Empty domain should trigger validation error
                 timestamp: 0,
                 expected_status: 200,
                 verifier_nonce: [0u8; 32],
+                tls_version: 0x0303, // TLS 1.2
+                cipher_suite: 0x1301, // TLS_AES_128_GCM_SHA256
+                server_random: [0u8; 32],
+                session_id: None,
+                session_ticket: None,
+                client_hello: vec![0x01],
+                server_hello: vec![0x02],
+                certificate_chain: Vec::new(),
+                cert_fingerprint: [0u8; 32],
+                http_request: {
+                    let mut v = vec![23, 3, 3, 0, 1];
+                    v.extend_from_slice(&[0u8; 1]);
+                    v
+                },
+                http_response: {
+                    let mut v = vec![23, 3, 3, 0, 1];
+                    v.extend_from_slice(&[0u8; 1]);
+                    v
+                },
+                merkle_root: [0u8; 32],
+                merkle_proofs: Vec::new(),
+                handshake_complete: false,
+                application_data_present: true,
             }
         });
 
@@ -464,34 +460,35 @@ mod tests {
     fn error_handling_provides_detailed_context() {
         // Test that verification errors provide detailed context
         // Create test bundle with valid domain but malformed handshake messages
-        use vefas_types::bundle::{VefasCanonicalBundle, BundleStorage, UncompressedBundleData};
         let bundle = VefasCanonicalBundle {
-            version: vefas_types::VEFAS_PROTOCOL_VERSION,
-            compression_version: 0,
-            storage: BundleStorage::Uncompressed(UncompressedBundleData {
-                client_hello: vec![0x01, 0x00, 0x00, 0x01, 0xFF], // Malformed ClientHello
-                server_hello: vec![0x02, 0x00, 0x00, 0x01, 0xFF], // Malformed ServerHello
-                certificate_msg: Vec::new(),
-                certificate_verify_msg: Vec::new(),
-                server_finished_msg: Vec::new(),
-                client_finished_msg: Vec::new(),
-                client_private_key: [0u8; 32],
-                certificate_chain: Vec::new(),
-                encrypted_request: {
-                    let mut v = vec![23, 3, 3, 0, 16];
-                    v.extend_from_slice(&[0u8; 16]); // Minimal valid-looking record
-                    v
-                },
-                encrypted_response: {
-                    let mut v = vec![23, 3, 3, 0, 16];
-                    v.extend_from_slice(&[0u8; 16]); // Minimal valid-looking record
-                    v
-                },
-            }),
+            version: vefas_types::VEFAS_PROTOCOL_VERSION as u8,
             domain: "example.com".to_string(), // Valid domain
             timestamp: 1234567890,
             expected_status: 200,
             verifier_nonce: [0u8; 32],
+            tls_version: 0x0303, // TLS 1.2
+            cipher_suite: 0x1301, // TLS_AES_128_GCM_SHA256
+            server_random: [0u8; 32],
+            session_id: None,
+            session_ticket: None,
+            client_hello: vec![0x01, 0x00, 0x00, 0x01, 0xFF], // Malformed ClientHello
+            server_hello: vec![0x02, 0x00, 0x00, 0x01, 0xFF], // Malformed ServerHello
+            certificate_chain: Vec::new(),
+            cert_fingerprint: [0u8; 32],
+            http_request: {
+                let mut v = vec![23, 3, 3, 0, 16];
+                v.extend_from_slice(&[0u8; 16]); // Minimal valid-looking record
+                v
+            },
+            http_response: {
+                let mut v = vec![23, 3, 3, 0, 16];
+                v.extend_from_slice(&[0u8; 16]); // Minimal valid-looking record
+                v
+            },
+            merkle_root: [0u8; 32],
+            merkle_proofs: Vec::new(),
+            handshake_complete: false,
+            application_data_present: true,
         };
 
         // This should fail during bundle validation or TLS handshake verification

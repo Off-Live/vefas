@@ -30,7 +30,7 @@ cargo test --workspace
 
 # Run tests for specific crate
 cargo test -p vefas-core
-cargo test -p vefas-gateway
+cargo test -p vefas-node
 cargo test -p vefas-crypto
 
 # Run specific test
@@ -71,15 +71,18 @@ cargo fmt
 cargo clippy --workspace -- -D warnings
 ```
 
-### Running the Gateway
+### Running the VEFAS Node
 ```bash
-# Start the REST API server (port 3000)
-cargo run --package vefas-gateway --release
+# Start the unified VEFAS node server (port 8080)
+cargo run -p vefas-node --release
+
+# With CUDA acceleration (requires CUDA 12, 24GB+ VRAM)
+cargo run -p vefas-node --release --features cuda
 
 # Test with curl
-curl -X POST http://127.0.0.1:3000/api/v1/requests \
+curl -X POST http://127.0.0.1:8080/requests \
   -H "Content-Type: application/json" \
-  -d '{"method": "GET", "url": "https://example.com", "proof_platform": "risc0"}'
+  -d '{"method": "GET", "url": "https://example.com", "platform": "risc0"}'
 ```
 
 ## Architecture
@@ -89,7 +92,7 @@ curl -X POST http://127.0.0.1:3000/api/v1/requests \
 **Core Infrastructure:**
 - `vefas-types`: Platform-agnostic no_std types for zkTLS verification (canonical bundles, proof claims)
 - `vefas-core`: Production HTTP client with TLS capture (`VefasClient`)
-- `vefas-gateway`: REST API server (Axum-based) for proof generation and verification
+- `vefas-node`: Unified HTTP execution and proof verification service with REST API
 - `vefas-rustls`: Custom rustls crypto provider with TLS message capture capabilities
 
 **Cryptographic Layer:**
@@ -124,6 +127,7 @@ HTTP Request → VefasClient → TLS Handshake Capture → VefasCanonicalBundle
 - Contains complete TLS session data: ClientHello, ServerHello, Certificate chain, encrypted request/response
 - Includes ephemeral private key (captured during handshake for debug/verification)
 - Domain, timestamp, and verifier nonce for binding
+- Merkle root and proofs for selective disclosure
 - Sent from host to zkVM guest program
 
 **VefasProofClaim** (vefas-types/src/output.rs):
@@ -138,7 +142,7 @@ The codebase supports both standard (host) and no_std (guest zkVM) environments:
 
 **std crates (host environment):**
 - `vefas-core`: TLS client, HTTP processing, bundle building
-- `vefas-gateway`: REST API server
+- `vefas-node`: REST API server
 - `vefas-rustls`: Custom rustls provider with capture
 - `vefas-crypto-native`: Native crypto implementations
 - `vefas-sp1/src/lib.rs`: SP1 prover (host)
@@ -169,17 +173,18 @@ Both zkVM guest programs use Merkle proofs for efficient verification:
 
 **Implementation:**
 - `vefas-crypto/src/merkle.rs`: Core Merkle verification logic
-- `vefas-sp1/program/src/selective_extraction.rs`: SP1 selective disclosure
-- `vefas-risc0/methods/guest/src/selective_extraction.rs`: RISC0 selective disclosure
+- `vefas-crypto/src/bundle_parser.rs`: Bundle parsing and extraction utilities
+- `vefas-crypto/src/validation.rs`: Certificate and handshake validation
+- Guest programs use these utilities for verification
 
 ## Development Guidelines
 
 ### Adding New Cryptographic Primitives
 
 1. Define trait in `vefas-crypto/src/traits.rs`
-2. Implement for native in `vefas-crypto-native/src/crypto_provider.rs`
-3. Implement for SP1 in `vefas-crypto-sp1/src/crypto_provider.rs` (using SP1 precompiles)
-4. Implement for RISC0 in `vefas-crypto-risc0/src/crypto_provider.rs` (using RISC0 precompiles)
+2. Implement for native in `vefas-crypto-native/src/provider.rs`
+3. Implement for SP1 in `vefas-crypto-sp1/src/lib.rs` (using SP1 precompiles)
+4. Implement for RISC0 in `vefas-crypto-risc0/src/lib.rs` (using RISC0 precompiles)
 
 Example pattern:
 ```rust
@@ -188,14 +193,14 @@ pub trait NewCryptoOp {
     fn perform(&self, input: &[u8]) -> Result<Vec<u8>, CryptoError>;
 }
 
-// vefas-crypto-native/src/crypto_provider.rs
+// vefas-crypto-native/src/provider.rs
 impl NewCryptoOp for NativeCryptoProvider {
     fn perform(&self, input: &[u8]) -> Result<Vec<u8>, CryptoError> {
         // Use aws-lc-rs
     }
 }
 
-// vefas-crypto-sp1/src/crypto_provider.rs
+// vefas-crypto-sp1/src/lib.rs
 impl NewCryptoOp for SP1CryptoProvider {
     fn perform(&self, input: &[u8]) -> Result<Vec<u8>, CryptoError> {
         // Use sp1_zkvm::precompiles
@@ -228,10 +233,10 @@ impl NewCryptoOp for SP1CryptoProvider {
 - Uses SP1 precompiles for optimized crypto operations
 - Faster than RISC0 for crypto-heavy workloads
 
-**Bundle Compression:**
-- LZSS compression for large bundles (>10KB)
-- Reduces zkVM memory usage and cycles
-- See `vefas-types/src/compression.rs`
+**Merkle Proofs:**
+- Reduces zkVM circuit size by 90%+
+- Enables selective field verification
+- Computed on host, verified in guest
 
 ### Common Patterns
 
@@ -246,8 +251,9 @@ impl NewCryptoOp for SP1CryptoProvider {
 
 **Feature Flags:**
 - `std`: Enable standard library (default for host crates)
-- `tokio-rustls`: Enable async TLS client (vefas-core)
-- `cuda`: Enable CUDA acceleration for RISC0 (vefas-risc0)
+- `cuda`: Enable CUDA acceleration for RISC0 and SP1
+- `sp1`: Enable SP1 zkVM support (default in vefas-node)
+- `risc0`: Enable RISC0 zkVM support (default in vefas-node)
 
 ### Working with Guest Programs
 
@@ -283,7 +289,7 @@ The custom rustls provider (`vefas-rustls`) captures:
 
 ## API Endpoints
 
-### POST /api/v1/requests
+### POST /requests
 Generate zkTLS proof for HTTPS request
 
 **Request:**
@@ -293,7 +299,7 @@ Generate zkTLS proof for HTTPS request
   "url": "https://example.com/api/endpoint",
   "headers": {"Authorization": "Bearer token"},
   "body": "optional request body",
-  "proof_platform": "risc0"  // or "sp1"
+  "platform": "risc0"  // or "sp1"
 }
 ```
 
@@ -314,11 +320,25 @@ Generate zkTLS proof for HTTPS request
 }
 ```
 
-### POST /api/v1/verify
-Verify zkTLS proof
+### POST /verify
+Verify zkTLS proof with selective disclosure
 
-### GET /api/v1/health
+**Request:**
+```json
+{
+  "proof": {
+    "platform": "risc0",
+    "proof_data": "base64_encoded_proof"
+  },
+  "selective_fields": ["Domain", "Timestamp", "HttpRequest"]
+}
+```
+
+### GET /health
 Health check and platform availability
+
+### GET /
+Service information and API documentation
 
 ## References
 

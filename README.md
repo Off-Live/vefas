@@ -1,6 +1,6 @@
 # VEFAS: Verifiable Execution Framework for Agents
 
-*A zkTLS client for generating cryptographic proofs of HTTPS requests and responses*
+*A production-grade zkTLS framework for generating cryptographic proofs of HTTPS requests and responses*
 
 ## Vision & Goal
 
@@ -17,9 +17,10 @@ The proof is portable and verifiable by anyone — **no MPC, no notary, no trust
 
 - ✅ **Selective Disclosure**: Prove individual components (request, response, domain, timestamp) independently
 - ✅ **Privacy-Preserving**: Share only what you want without revealing everything
-- ✅ **Zero-Knowledge Proofs**: Powered by RISC0 and SP1 zkVMs
-- ✅ **TLS 1.3 Support**: Full support for modern TLS protocol
-- ✅ **Easy Integration**: Simple REST API for proof generation and verification
+- ✅ **Zero-Knowledge Proofs**: Powered by RISC0 and SP1 zkVMs with CUDA acceleration
+- ✅ **TLS 1.3 Support**: Full support for modern TLS protocol with certificate validation
+- ✅ **Production Ready**: Unified node with comprehensive verification and attestation
+- ✅ **Cross-Platform**: Works seamlessly across different zkVM platforms
 
 ## Quick Start
 
@@ -28,32 +29,50 @@ See [SETUP.md](./SETUP.md) for complete installation instructions including Rust
 
 ### Usage (after setup)
 ```bash
-# Start the gateway server
-cargo run --package vefas-gateway
+# Start the unified VEFAS node server
+cargo run -p vefas-node --release --features cuda
 
 # Generate a proof (example)
-curl -X POST http://127.0.0.1:3000/api/v1/requests \
+curl -X POST http://127.0.0.1:8080/requests \
   -H "Content-Type: application/json" \
   -d '{
-    "method": "GET",
     "url": "https://example.com",
-    "proof_platform": "risc0"
+    "method": "GET",
+    "platform": "risc0"
+  }'
+
+# Verify a proof with selective disclosure
+curl -X POST http://127.0.0.1:8080/verify \
+  -H "Content-Type: application/json" \
+  -d '{
+    "proof": {
+      "platform": "risc0",
+      "proof_data": "base64_encoded_proof_data"
+    },
+    "selective_fields": ["Domain", "Timestamp"]
   }'
 ```
 
 ## How It Works
 
-VEFAS uses a **two-phase architecture** to generate verifiable proofs:
+VEFAS uses a **unified architecture** with comprehensive verification:
 
-### Phase 1: Capture (Host)
+### Phase 1: Capture & Validate (Host)
 - Establish a real TLS 1.3 connection to the target server
 - Capture the complete TLS handshake and HTTP exchange
+- Validate certificate chains with bundled root certificates
 - Generate cryptographic commitments for selective disclosure
 
-### Phase 2: Prove (zkVM)
+### Phase 2: Prove & Verify (zkVM)
 - Verify the TLS handshake and cryptographic signatures
 - Validate the HTTP request and response integrity
 - Generate a zero-knowledge proof of the entire session
+- Support selective field verification with Merkle proofs
+
+### Phase 3: Attestation (Optional)
+- Generate Ed25519-signed attestations for certificate validation
+- Support OCSP checking and Certificate Transparency verification
+- Provide comprehensive audit trails
 
 ### Selective Disclosure
 Users can choose what to reveal:
@@ -87,47 +106,102 @@ Create verifiable audit trails:
 ```
 vefas/
 ├── crates/
-│   ├── vefas-gateway/      # REST API server
+│   ├── vefas-node/         # Unified HTTP execution and proof verification service
+│   │   ├── src/zktls/      # zkTLS components (prover, verifier, attestation)
+│   │   └── certs/          # Bundled root certificates
 │   ├── vefas-core/         # TLS client and session management
-│   ├── vefas-rustls/       # Custom TLS implementation
-│   ├── vefas-types/        # Shared data types
-│   ├── vefas-crypto/       # Cryptographic primitives
-│   ├── vefas-sp1/          # SP1 zkVM integration
-│   └── vefas-risc0/        # RISC0 zkVM integration
-└── tests/                  # Integration tests
+│   ├── vefas-rustls/       # Custom TLS implementation with capture
+│   ├── vefas-types/        # Platform-agnostic no_std types
+│   ├── vefas-crypto/       # Cryptographic traits and shared utilities
+│   ├── vefas-crypto-native/ # Native crypto implementations (aws-lc-rs)
+│   ├── vefas-crypto-sp1/   # SP1 zkVM crypto implementations
+│   ├── vefas-crypto-risc0/ # RISC0 zkVM crypto implementations
+│   ├── vefas-sp1/          # SP1 zkVM integration (host + guest)
+│   └── vefas-risc0/        # RISC0 zkVM integration (host + guest)
+├── tests/                  # End-to-end integration tests
+└── fixtures/               # Test certificates and TLS transcripts
 ```
 
-## Gateway API
+## VEFAS Node API
 
-The VEFAS Gateway provides REST endpoints for generating and verifying zkTLS proofs:
+The unified VEFAS Node provides REST endpoints for generating and verifying zkTLS proofs:
 
 ### Core Endpoints
-- `POST /api/v1/requests` - Execute HTTPS request and generate proof
-- `GET /api/v1/health` - Service health and available platforms
+- `POST /requests` - Execute HTTPS request and generate ZK proof
+- `POST /verify` - Verify ZK proof with selective disclosure
+- `GET /health` - Service health and available platforms
+- `GET /` - Service information and API documentation
 
-### Example Usage
+### Request Format
+```json
+{
+  "url": "https://example.com",
+  "method": "GET",
+  "platform": "risc0"  // or "sp1"
+}
+```
 
-```bash
-# Generate a proof
-curl -X POST http://127.0.0.1:3000/api/v1/requests \
-  -H "Content-Type: application/json" \
-  -d '{
-    "method": "GET",
-    "url": "https://api.github.com/repos/octocat/Hello-World",
-    "proof_platform": "sp1"
-  }'
+### Verification Format
+```json
+{
+  "proof": {
+    "platform": "risc0",
+    "proof_data": "base64_encoded_proof"
+  },
+  "selective_fields": ["Domain", "Timestamp", "HttpRequest"]
+}
+```
 
 ## Supported zkVM Platforms
 
 - **RISC0** - Mature platform with comprehensive tooling and CUDA acceleration
 - **SP1** - High-performance zkVM with optimized precompiles
+- **Cross-Platform**: Seamless switching between platforms with consistent API
 
 ## TLS Protocol Support
 
-- **TLS 1.3** (RFC 8446)
+- **TLS 1.3** (RFC 8446) with full handshake verification
 - **Cipher suites**: AES-128-GCM, AES-256-GCM, ChaCha20-Poly1305
 - **Key exchange**: ECDHE with X25519 or P-256
 - **Authentication**: ECDSA, Ed25519, RSA certificates
+- **Certificate validation**: Bundled root certificates with OCSP and CT support
+
+## Architecture Components
+
+### zkTLS Module (`vefas-node/src/zktls/`)
+- **ProverService**: Handles ZK proof generation for RISC0 and SP1
+- **VerifierService**: Validates ZK proofs and Merkle proofs for selective disclosure
+- **CertificateValidator**: Validates certificate chains with bundled roots
+- **AttestationSigner**: Generates Ed25519-signed attestations
+- **OcspChecker**: Online Certificate Status Protocol verification
+- **CtLogVerifier**: Certificate Transparency log verification
+
+## Testing & Quality Assurance
+
+### Test Structure
+- **End-to-End Tests**: Comprehensive integration testing with real TLS sessions
+- **Security Tests**: Fuzzing, attack vectors, and penetration testing
+- **Cross-Platform Tests**: Consistency verification across RISC0 and SP1
+- **Performance Tests**: Proving time and verification cost benchmarks
+
+### Test Categories
+- `tests/e2e_tests.rs` - Main E2E test orchestrator
+- `tests/security/` - Security testing suite
+- `crates/*/tests/` - Unit and integration tests per crate
+- `fixtures/` - Test certificates and TLS transcripts
+
+## Development
+
+### Key Design Principles
+- **no_std Compatibility**: All core types work in zkVM guest environments
+- **Platform Agnostic**: Traits work across all zkVM platforms
+- **Production Ready**: Comprehensive error handling and validation
+- **Security First**: Constant-time operations and cryptographic best practices
+
+### Build Features
+- `cuda` - Enable CUDA acceleration for RISC0
+- `sp1` - Enable SP1 zkVM support (default)
+- `risc0` - Enable RISC0 zkVM support (default)
 
 ## Documentation
 

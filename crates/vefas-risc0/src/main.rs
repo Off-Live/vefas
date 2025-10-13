@@ -77,20 +77,21 @@ fn create_mock_bundle() -> VefasCanonicalBundle {
     VefasCanonicalBundle::new(
         vec![0x16, 0x03, 0x03, 0x00, 0x30], // Mock ClientHello
         vec![0x16, 0x03, 0x03, 0x00, 0x30], // Mock ServerHello
-        vec![0x16, 0x03, 0x03, 0x00, 0x20], // Mock EncryptedExtensions
-        vec![0x16, 0x03, 0x03, 0x00, 0x20], // Mock Certificate
-        vec![0x16, 0x03, 0x03, 0x00, 0x10], // Mock CertificateVerify
-        vec![0x16, 0x03, 0x03, 0x00, 0x10], // Mock ServerFinished
-        vec![0x16, 0x03, 0x03, 0x00, 0x10], // Mock ClientFinished
-        [1u8; 32],                          // Mock private key
         vec![vec![0x30, 0x82, 0x01, 0x00]], // Mock certificate chain
         b"GET / HTTP/1.1\r\nHost: example.com\r\n\r\n".to_vec(),
         b"HTTP/1.1 200 OK\r\n\r\nHello World".to_vec(),
         "example.com".to_string(),
         1678886400,
         200,
-        [42u8; 32],
-        None, // debug_keys - None for mock bundle
+        [1u8; 32],
+        0x0303, // tls_version (TLS 1.2)
+        0x1301, // cipher_suite (TLS_AES_128_GCM_SHA256)
+        [42u8; 32], // server_random
+        [0u8; 32], // cert_fingerprint
+        None, // session_id
+        None, // session_ticket
+        true, // handshake_complete
+        true, // application_data_present
     )
     .expect("Failed to create mock bundle")
 }

@@ -1,12 +1,12 @@
 [package]
-name = "vefas-gateway"
+name = "vefas-node"
 version = "0.1.0"
 edition.workspace = true
 license.workspace = true
-description = "Production-grade HTTP gateway for VEFAS zkTLS verification"
+description = "Unified VEFAS Node - HTTP execution and proof verification service"
 
 [[bin]]
-name = "vefas-gateway"
+name = "vefas-node"
 path = "src/main.rs"
 
 [dependencies]
@@ -17,13 +17,13 @@ vefas-crypto = { path = "../vefas-crypto" }
 vefas-crypto-native = { path = "../vefas-crypto-native" }
 
 # zkVM implementations
-vefas-sp1 = { path = "../vefas-sp1", optional = true }
+vefas-sp1 = { path = "../vefas-sp1", optional = true, default-features = false }
 vefas-risc0 = { path = "../vefas-risc0", optional = true, default-features = false }
 
 # HTTP server
 axum = { version = "0.8", features = ["http2", "macros", "tracing"] }
 tower = { version = "0.5", features = ["timeout", "limit", "load-shed", "steer"] }
-tower-http = { version = "0.6", features = ["cors", "trace", "compression-br", "request-id", "limit"] }
+tower-http = { version = "0.6", features = ["cors", "trace", "compression-br", "request-id", "limit", "timeout"] }
 
 # Async runtime
 tokio.workspace = true
@@ -68,14 +68,43 @@ sha2 = "0.10"
 # TLS processing
 rustls = { version = "0.23", features = ["std"] }
 
+# Verifier dependencies (merged from vefas-verifier)
+# ASN.1 parsing for OCSP and certificate extensions
+der = "0.7"
+spki = "0.7"
+
+# Cryptography for attestations
+ed25519-dalek = { version = "2.0", features = ["rand_core"] }
+ring = "0.17"
+
+# Certificate validation
+rustls-pemfile = "2.0"
+webpki = "0.22"
+webpki-roots = "0.25"
+
+# Certificate Transparency
+ct-logs = "0.8"
+sct = "0.7"
+
+# OCSP
+ocsp = "0.4"
+
+# Certificate parsing
+pem = "3.0"
+x509-parser = "0.16"
+
+# Random number generation
+rand = "0.8"
+
 [dev-dependencies]
 # Testing
 rstest.workspace = true
 tokio-test = "0.4"
 tower-test = "0.4"
+serial_test = "3.0"  # Serialize tests to prevent Docker container conflicts
 
 [features]
 default = ["sp1", "risc0"]
-sp1 = ["vefas-sp1"]
+sp1 = ["vefas-sp1/host-prover"]
 risc0 = ["vefas-risc0"]
-cuda = ["vefas-risc0/cuda"]  # Enable CUDA acceleration for RISC0
+cuda = ["vefas-risc0/cuda", "vefas-sp1/cuda"]  # Enable CUDA acceleration for both RISC0 and SP1

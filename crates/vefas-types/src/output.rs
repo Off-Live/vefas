@@ -60,6 +60,12 @@ pub struct VefasProofClaim {
     /// SHA-256 hash of the handshake transcript (binary format)
     pub handshake_transcript_hash: [u8; 32],
 
+    /// SHA-256 fingerprint of server's leaf certificate (for verifier binding)
+    pub cert_fingerprint: [u8; 32],
+
+    /// Unique proof identifier for binding zk proof to verifier attestations
+    pub proof_id: [u8; 32],
+
     /// Unix timestamp when the session was captured
     pub timestamp: u64,
 
@@ -70,35 +76,22 @@ pub struct VefasProofClaim {
     pub execution_metadata: VefasExecutionMetadata,
 }
 
-/// Performance metrics breakdown for zkVM execution
+/// Performance metrics breakdown for simplified zkVM execution
+/// 
+/// Reflects the new architecture where zkVM focuses on Merkle proof verification
+/// and HTTP data integrity, while verifier nodes handle PKI validation.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct VefasPerformanceMetrics {
     /// Total execution cycles
     pub total_cycles: u64,
-    /// Cycles spent on bundle decompression
-    pub decompression_cycles: u64,
-    /// Cycles spent on bundle validation
-    pub validation_cycles: u64,
-    /// Cycles spent on TLS handshake verification
-    pub handshake_cycles: u64,
-    /// Cycles spent on certificate validation
-    pub certificate_validation_cycles: u64,
-    /// Cycles spent on key derivation
-    pub key_derivation_cycles: u64,
-    /// Cycles spent on application data decryption
-    pub decryption_cycles: u64,
-    /// Cycles spent on HTTP parsing
+    /// Cycles spent on Merkle proof verification (main zkVM operation)
+    pub merkle_verification_cycles: u64,
+    /// Cycles spent on HTTP data extraction and parsing
     pub http_parsing_cycles: u64,
-    /// Cycles spent on cryptographic operations
+    /// Cycles spent on cryptographic operations (hashing, commitments)
     pub crypto_operations_cycles: u64,
     /// Memory usage estimate (bytes)
     pub memory_usage: usize,
-    /// Compression ratio if bundle was compressed
-    pub compression_ratio: Option<f32>,
-    /// Original bundle size if compressed
-    pub original_bundle_size: Option<usize>,
-    /// Decompressed bundle size
-    pub decompressed_bundle_size: Option<usize>,
 }
 
 /// Execution metadata for zkVM proof generation
@@ -152,6 +145,8 @@ impl VefasProofClaim {
         cipher_suite: String,
         certificate_chain_hash: [u8; 32],
         handshake_transcript_hash: [u8; 32],
+        cert_fingerprint: [u8; 32],
+        proof_id: [u8; 32],
         timestamp: u64,
         performance: VefasPerformanceMetrics,
         execution_metadata: VefasExecutionMetadata,
@@ -170,6 +165,8 @@ impl VefasProofClaim {
             cipher_suite,
             certificate_chain_hash,
             handshake_transcript_hash,
+            cert_fingerprint,
+            proof_id,
             timestamp,
             performance,
             execution_metadata,
@@ -441,18 +438,10 @@ mod tests {
     fn create_test_performance_metrics() -> VefasPerformanceMetrics {
         VefasPerformanceMetrics {
             total_cycles: 1_000_000,
-            decompression_cycles: 50_000,
-            validation_cycles: 100_000,
-            handshake_cycles: 200_000,
-            certificate_validation_cycles: 150_000,
-            key_derivation_cycles: 80_000,
-            decryption_cycles: 120_000,
+            merkle_verification_cycles: 100_000,
             http_parsing_cycles: 60_000,
             crypto_operations_cycles: 240_000,
             memory_usage: 2048,
-            compression_ratio: Some(0.7),
-            original_bundle_size: Some(4096),
-            decompressed_bundle_size: Some(2867),
         }
     }
 
@@ -470,6 +459,8 @@ mod tests {
             "TLS_AES_256_GCM_SHA384".to_string(), // cipher_suite
             [3u8; 32],                            // certificate_chain_hash
             [4u8; 32],                            // handshake_transcript_hash
+            [5u8; 32],                            // cert_fingerprint
+            [6u8; 32],                            // proof_id
             1640995200,                           // timestamp (2022-01-01)
             create_test_performance_metrics(),    // performance
             create_test_execution_metadata(),     // execution_metadata

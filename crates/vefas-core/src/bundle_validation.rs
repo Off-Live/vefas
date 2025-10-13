@@ -200,35 +200,19 @@ impl BundleValidator {
         // Basic validation is done through the bundle's own validate() method
 
         // Validate handshake message formats
-        self.validate_handshake_message_format(&bundle.client_hello()?, "ClientHello")?;
-        self.validate_handshake_message_format(&bundle.server_hello()?, "ServerHello")?;
+        self.validate_handshake_message_format(&bundle.client_hello, "ClientHello")?;
+        self.validate_handshake_message_format(&bundle.server_hello, "ServerHello")?;
 
-        // Validate EncryptedExtensions (required in TLS 1.3)
-        if !bundle.encrypted_extensions().unwrap_or_default().is_empty() {
-            self.validate_handshake_message_format(&bundle.encrypted_extensions()?, "EncryptedExtensions")?;
+        // Validate HTTP request/response data
+        if bundle.http_request.is_empty() {
+            return Err(VefasCoreError::ValidationError(
+                "Missing HTTP request data".to_string(),
+            ));
         }
-
-        if !bundle.certificate_msg().unwrap_or_default().is_empty() {
-            self.validate_handshake_message_format(&bundle.certificate_msg()?, "Certificate")?;
-        }
-
-        if !bundle
-            .certificate_verify_msg()
-            .unwrap_or_default()
-            .is_empty()
-        {
-            self.validate_handshake_message_format(
-                &bundle.certificate_verify_msg()?,
-                "CertificateVerify",
-            )?;
-        }
-
-        // Validate finished message
-        if !bundle.server_finished_msg().unwrap_or_default().is_empty() {
-            self.validate_handshake_message_format(
-                &bundle.server_finished_msg()?,
-                "ServerFinished",
-            )?;
+        if bundle.http_response.is_empty() {
+            return Err(VefasCoreError::ValidationError(
+                "Missing HTTP response data".to_string(),
+            ));
         }
 
         Ok(())
@@ -237,13 +221,13 @@ impl BundleValidator {
     /// Verify handshake message integrity and ordering
     pub fn verify_handshake_integrity(&self, bundle: &VefasCanonicalBundle) -> Result<()> {
         // Check that required handshake messages are present
-        if bundle.client_hello().unwrap_or_default().is_empty() {
+        if bundle.client_hello.is_empty() {
             return Err(VefasCoreError::ValidationError(
                 "ClientHello message is missing".to_string(),
             ));
         }
 
-        if bundle.server_hello().unwrap_or_default().is_empty() {
+        if bundle.server_hello.is_empty() {
             return Err(VefasCoreError::ValidationError(
                 "ServerHello message is missing".to_string(),
             ));
@@ -254,69 +238,18 @@ impl BundleValidator {
         // treat missing ServerFinished as acceptable here. If present, we will validate it.
 
         // Validate handshake message structure
-        self.validate_handshake_structure(&bundle.client_hello()?, 1)?; // ClientHello = 1
-        self.validate_handshake_structure(&bundle.server_hello()?, 2)?; // ServerHello = 2
+        self.validate_handshake_structure(&bundle.client_hello, 1)?; // ClientHello = 1
+        self.validate_handshake_structure(&bundle.server_hello, 2)?; // ServerHello = 2
 
-        // Validate EncryptedExtensions structure (required in TLS 1.3)
-        if !bundle.encrypted_extensions().unwrap_or_default().is_empty() {
-            self.validate_handshake_structure(&bundle.encrypted_extensions()?, 8)?; // EncryptedExtensions = 8
-        }
-
-        if !bundle.certificate_msg().unwrap_or_default().is_empty() {
-            self.validate_handshake_structure(&bundle.certificate_msg()?, 11)?; // Certificate = 11
-        }
-
-        if !bundle
-            .certificate_verify_msg()
-            .unwrap_or_default()
-            .is_empty()
-        {
-            self.validate_handshake_structure(&bundle.certificate_verify_msg()?, 15)?;
-            // CertificateVerify = 15
-        }
-
-        if !bundle.server_finished_msg().unwrap_or_default().is_empty() {
-            self.validate_handshake_structure(&bundle.server_finished_msg()?, 20)?;
-            // Finished = 20
-        }
-
-        // Sequencing checks (RFC 8446 §4.4):
-        // If CertificateVerify is present, Certificate must be present before it
-        if !bundle
-            .certificate_verify_msg()
-            .unwrap_or_default()
-            .is_empty()
-            && bundle.certificate_msg().unwrap_or_default().is_empty()
-        {
+        // Validate HTTP request/response data
+        if bundle.http_request.is_empty() {
             return Err(VefasCoreError::ValidationError(
-                "CertificateVerify present without Certificate".to_string(),
+                "Missing HTTP request data".to_string(),
             ));
         }
-
-        // Finished, if present, must come after encrypted EncryptedExtensions/Certificate/CertificateVerify
-        if !bundle.server_finished_msg().unwrap_or_default().is_empty() {
-            // We can't check transcript order precisely without full parsing,
-            // but we can require that if Cert/CertVerify are present, Finished is also present (already true)
-            // and the TLSCiphertext records exist to indicate post-handshake boundary was crossed
-            // Ensure encrypted application data exists when Finished present (boundary crossed)
-            if bundle.encrypted_request().unwrap_or_default().is_empty()
-                || bundle.encrypted_response().unwrap_or_default().is_empty()
-            {
-                return Err(VefasCoreError::ValidationError(
-                    "Finished present but missing encrypted application data records".to_string(),
-                ));
-            }
-        }
-
-        // Boundary checks: Encrypted application data records must exist for a complete session
-        if bundle.encrypted_request().unwrap_or_default().is_empty() {
+        if bundle.http_response.is_empty() {
             return Err(VefasCoreError::ValidationError(
-                "Missing encrypted_request TLS record".to_string(),
-            ));
-        }
-        if bundle.encrypted_response().unwrap_or_default().is_empty() {
-            return Err(VefasCoreError::ValidationError(
-                "Missing encrypted_response TLS record".to_string(),
+                "Missing HTTP response data".to_string(),
             ));
         }
 
@@ -325,27 +258,18 @@ impl BundleValidator {
 
     /// Check secret consistency
     pub fn check_secret_consistency(&self, bundle: &VefasCanonicalBundle) -> Result<()> {
-        // Validate client private key
-        if bundle.client_private_key()? == [0u8; 32] && self.strict_mode {
-            return Err(VefasCoreError::ValidationError(
-                "Client private key appears to be zero (placeholder)".to_string(),
-            ));
-        }
+        // Client private key validation is no longer performed in the new architecture.
+        // Heavy cryptographic operations are removed for performance.
 
         // Validate certificate chain is present
-        if bundle.certificate_chain()?.is_empty() {
+        if bundle.certificate_chain.is_empty() {
             return Err(VefasCoreError::ValidationError(
                 "No certificate chain provided".to_string(),
             ));
         }
 
         // Validate each certificate in chain is not empty
-        for (i, cert) in bundle
-            .certificate_chain()
-            .unwrap_or_default()
-            .iter()
-            .enumerate()
-        {
+        for (i, cert) in bundle.certificate_chain.iter().enumerate() {
             if cert.is_empty() {
                 return Err(VefasCoreError::ValidationError(format!(
                     "Certificate at index {} is empty",
@@ -369,40 +293,36 @@ impl BundleValidator {
             });
         }
 
-        match bundle.client_hello() {
-            Ok(client_hello) => {
-                if client_hello.is_empty() {
-                    errors.push(ValidationError::MissingField {
-                        field: "client_hello".to_string(),
-                    });
-                }
-            }
-            Err(_) => {
-                errors.push(ValidationError::InvalidFormat {
-                    field: "client_hello".to_string(),
-                    message: "Failed to access client hello".to_string(),
-                });
-            }
+        if bundle.client_hello.is_empty() {
+            errors.push(ValidationError::MissingField {
+                field: "client_hello".to_string(),
+            });
         }
 
-        match bundle.server_hello() {
-            Ok(server_hello) => {
-                if server_hello.is_empty() {
-                    errors.push(ValidationError::MissingField {
-                        field: "server_hello".to_string(),
-                    });
-                }
-            }
-            Err(_) => {
-                errors.push(ValidationError::InvalidFormat {
-                    field: "server_hello".to_string(),
-                    message: "Failed to access server hello".to_string(),
-                });
-            }
+        if bundle.server_hello.is_empty() {
+            errors.push(ValidationError::MissingField {
+                field: "server_hello".to_string(),
+            });
         }
 
-        // Note: VefasCanonicalBundle doesn't have tls_version and cipher_suite fields
-        // These are inferred from the handshake messages during validation
+        // Validate new fields in the optimized bundle structure
+        if bundle.certificate_chain.is_empty() {
+            errors.push(ValidationError::MissingField {
+                field: "certificate_chain".to_string(),
+            });
+        }
+
+        if bundle.http_request.is_empty() {
+            errors.push(ValidationError::MissingField {
+                field: "http_request".to_string(),
+            });
+        }
+
+        if bundle.http_response.is_empty() {
+            errors.push(ValidationError::MissingField {
+                field: "http_response".to_string(),
+            });
+        }
     }
 
     /// Validate field formats
@@ -428,19 +348,18 @@ impl BundleValidator {
             });
         }
 
-        // Validate request/response data
-        if bundle.encrypted_request().unwrap_or_default().is_empty() {
+        // Validate HTTP request/response data
+        if bundle.http_request.is_empty() {
             warnings.push(ValidationWarning::FormatWarning {
-                field: "encrypted_request".to_string(),
-                message: "No encrypted request data present".to_string(),
+                field: "http_request".to_string(),
+                message: "No HTTP request data present".to_string(),
             });
         }
 
-        // Validate EncryptedExtensions presence (required in TLS 1.3)
-        if bundle.encrypted_extensions().unwrap_or_default().is_empty() {
+        if bundle.http_response.is_empty() {
             warnings.push(ValidationWarning::FormatWarning {
-                field: "encrypted_extensions".to_string(),
-                message: "EncryptedExtensions missing - required in TLS 1.3".to_string(),
+                field: "http_response".to_string(),
+                message: "No HTTP response data present".to_string(),
             });
         }
     }
@@ -461,7 +380,7 @@ impl BundleValidator {
         // Check if timestamp is reasonable (not too far in the future or past)
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
+            .unwrap()
             .as_secs();
 
         let bundle_time = bundle.timestamp;
@@ -490,30 +409,14 @@ impl BundleValidator {
         errors: &mut Vec<ValidationError>,
         warnings: &mut Vec<ValidationWarning>,
     ) {
-        if bundle.certificate_msg().unwrap_or_default().is_empty() {
+        // Certificate validation is no longer performed in the new architecture.
+        // Certificate chain validation is handled by verifier nodes.
+        
+        // Basic certificate chain presence check
+        if bundle.certificate_chain.is_empty() {
             warnings.push(ValidationWarning::FormatWarning {
-                field: "certificate_msg".to_string(),
-                message: "No certificate message data present".to_string(),
-            });
-            return;
-        }
-
-        // Basic certificate format validation
-        if bundle.certificate_msg().unwrap_or_default().len() < 4 {
-            errors.push(ValidationError::CertificateError {
-                message: "Certificate message data too short".to_string(),
-            });
-        }
-
-        // Check for CertificateVerify if certificate is present
-        if bundle
-            .certificate_verify_msg()
-            .unwrap_or_default()
-            .is_empty()
-        {
-            warnings.push(ValidationWarning::FormatWarning {
-                field: "certificate_verify_msg".to_string(),
-                message: "Certificate present but no CertificateVerify".to_string(),
+                field: "certificate_chain".to_string(),
+                message: "No certificate chain present".to_string(),
             });
         }
     }
@@ -525,26 +428,22 @@ impl BundleValidator {
         errors: &mut Vec<ValidationError>,
         warnings: &mut Vec<ValidationWarning>,
     ) {
-        // Strict mode requires all optional fields
-        if bundle.certificate_msg().unwrap_or_default().is_empty() {
+        // Strict mode validation for new architecture
+        if bundle.certificate_chain.is_empty() {
             errors.push(ValidationError::MissingField {
-                field: "certificate_msg".to_string(),
+                field: "certificate_chain".to_string(),
             });
         }
 
-        if bundle
-            .certificate_verify_msg()
-            .unwrap_or_default()
-            .is_empty()
-        {
+        if bundle.http_request.is_empty() {
             errors.push(ValidationError::MissingField {
-                field: "certificate_verify_msg".to_string(),
+                field: "http_request".to_string(),
             });
         }
 
-        if bundle.encrypted_response().unwrap_or_default().is_empty() {
-            warnings.push(ValidationWarning::PerformanceWarning {
-                message: "No encrypted response data captured".to_string(),
+        if bundle.http_response.is_empty() {
+            errors.push(ValidationError::MissingField {
+                field: "http_response".to_string(),
             });
         }
     }
@@ -557,7 +456,7 @@ impl BundleValidator {
         ValidationMetadata {
             validation_timestamp: std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
+                .unwrap()
                 .as_secs(),
             bundle_size,
             handshake_message_count: handshake_count,
@@ -619,46 +518,22 @@ impl BundleValidator {
 
     fn calculate_bundle_size(&self, bundle: &VefasCanonicalBundle) -> usize {
         bundle.domain.len()
-            + bundle.client_hello().unwrap_or_default().len()
-            + bundle.server_hello().unwrap_or_default().len()
-            + bundle.encrypted_extensions().unwrap_or_default().len()
-            + bundle.certificate_msg().unwrap_or_default().len()
-            + bundle.certificate_verify_msg().unwrap_or_default().len()
-            + bundle.server_finished_msg().unwrap_or_default().len()
-            + bundle.encrypted_request().unwrap_or_default().len()
-            + bundle.encrypted_response().unwrap_or_default().len()
-            + bundle
-                .certificate_chain()
-                .unwrap_or_default()
-                .iter()
-                .map(|cert| cert.len())
-                .sum::<usize>()
+            + bundle.client_hello.len()
+            + bundle.server_hello.len()
+            + bundle.certificate_chain.iter().map(|cert| cert.len()).sum::<usize>()
+            + bundle.http_request.len()
+            + bundle.http_response.len()
     }
 
     fn count_handshake_messages(&self, bundle: &VefasCanonicalBundle) -> usize {
         let mut count = 0;
-        if !bundle.client_hello().unwrap_or_default().is_empty() {
+        if !bundle.client_hello.is_empty() {
             count += 1;
         }
-        if !bundle.server_hello().unwrap_or_default().is_empty() {
+        if !bundle.server_hello.is_empty() {
             count += 1;
         }
-        if !bundle.encrypted_extensions().unwrap_or_default().is_empty() {
-            count += 1;
-        }
-        if !bundle.certificate_msg().unwrap_or_default().is_empty() {
-            count += 1;
-        }
-        if !bundle
-            .certificate_verify_msg()
-            .unwrap_or_default()
-            .is_empty()
-        {
-            count += 1;
-        }
-        if !bundle.server_finished_msg().unwrap_or_default().is_empty() {
-            count += 1;
-        }
+        // Only count core handshake messages in new architecture
         count
     }
 }
@@ -701,34 +576,14 @@ mod tests {
         VefasCanonicalBundle::new(
             client_hello,
             server_hello,
-            hs(8, &[13, 14, 15, 16]), // encrypted_extensions (type 8)
-            hs(11, &[13, 14, 15, 16]), // certificate_msg
-            hs(15, &[17, 18, 19, 20]), // certificate_verify_msg
-            hs(20, &[21, 22, 23, 24]), // server_finished_msg
-            hs(20, &[21, 22, 23, 24]), // client_finished_msg
-            [1u8; 32],                 // client_private_key
             vec![vec![
                 // Mock certificate in DER format (simplified but more realistic)
                 0x30, 0x82, 0x01, 0x00, // Basic DER certificate structure
                 0x30, 0x81, 0xED, 0xA0, 0x03, 0x02, 0x01, 0x02, 0x02, 0x04, 0x12, 0x34, 0x56,
                 0x78, // Serial number
             ]], // certificate_chain
-            {
-                // Create properly formatted TLS ApplicationData record for encrypted_request
-                let mut req = vec![0x17, 0x03, 0x03]; // content_type=23 (ApplicationData), version=0x0303
-                let payload = b"GET /test HTTP/1.1\r\nHost: example.com\r\n\r\n";
-                req.extend_from_slice(&(payload.len() as u16).to_be_bytes()); // length
-                req.extend_from_slice(payload);
-                req
-            }, // encrypted_request
-            {
-                // Create properly formatted TLS ApplicationData record for encrypted_response
-                let mut resp = vec![0x17, 0x03, 0x03]; // content_type=23 (ApplicationData), version=0x0303
-                let payload = b"HTTP/1.1 200 OK\r\n\r\nHello";
-                resp.extend_from_slice(&(payload.len() as u16).to_be_bytes()); // length
-                resp.extend_from_slice(payload);
-                resp
-            }, // encrypted_response
+            b"GET /test HTTP/1.1\r\nHost: example.com\r\n\r\n".to_vec(), // http_request
+            b"HTTP/1.1 200 OK\r\n\r\nHello".to_vec(), // http_response
             "example.com".to_string(), // domain
             1234567890,                // timestamp
             200,                       // expected_status
@@ -772,15 +627,9 @@ mod tests {
         let bundle = VefasCanonicalBundle::new(
             vec![2, 0, 0, 6, 1, 2, 3, 4, 5, 6],    // Wrong type: ServerHello instead of ClientHello
             vec![1, 0, 0, 6, 7, 8, 9, 10, 11, 12], // Wrong type: ClientHello instead of ServerHello
-            vec![11, 0, 0, 4, 13, 14, 15, 16],     // encrypted_extensions
-            vec![11, 0, 0, 4, 13, 14, 15, 16],     // certificate_msg
-            vec![15, 0, 0, 4, 17, 18, 19, 20],     // certificate_verify_msg
-            vec![20, 0, 0, 4, 21, 22, 23, 24],     // server_finished_msg
-            vec![20, 0, 0, 4, 21, 22, 23, 24],     // client_finished_msg
-            [1u8; 32],                             // client_private_key
             vec![vec![1, 2, 3, 4]],                // certificate_chain
-            vec![0x17, 0x03, 0x03, 0, 4, 1, 2, 3, 4], // encrypted_request
-            vec![0x17, 0x03, 0x03, 0, 4, 5, 6, 7, 8], // encrypted_response
+            b"GET /test HTTP/1.1\r\nHost: example.com\r\n\r\n".to_vec(), // http_request
+            b"HTTP/1.1 200 OK\r\n\r\nHello".to_vec(), // http_response
             "example.com".to_string(),
             1234567890,
             200,
@@ -823,29 +672,9 @@ mod tests {
         let bundle = VefasCanonicalBundle::new(
             client_hello,
             server_hello,
-            vec![11, 0, 0, 4, 13, 14, 15, 16], // encrypted_extensions
-            vec![11, 0, 0, 4, 13, 14, 15, 16], // certificate_msg
-            vec![15, 0, 0, 4, 17, 18, 19, 20], // certificate_verify_msg
-            vec![20, 0, 0, 4, 21, 22, 23, 24], // server_finished_msg
-            vec![20, 0, 0, 4, 21, 22, 23, 24], // client_finished_msg
-            [1u8; 32],                         // client_private_key
             Vec::new(), // empty certificate_chain - this should cause validation failure
-            {
-                // Create properly formatted TLS ApplicationData record for encrypted_request
-                let mut req = vec![0x17, 0x03, 0x03]; // content_type=23 (ApplicationData), version=0x0303
-                let payload = b"GET /test HTTP/1.1\r\nHost: example.com\r\n\r\n";
-                req.extend_from_slice(&(payload.len() as u16).to_be_bytes()); // length
-                req.extend_from_slice(payload);
-                req
-            }, // encrypted_request
-            {
-                // Create properly formatted TLS ApplicationData record for encrypted_response
-                let mut resp = vec![0x17, 0x03, 0x03]; // content_type=23 (ApplicationData), version=0x0303
-                let payload = b"HTTP/1.1 200 OK\r\n\r\nHello";
-                resp.extend_from_slice(&(payload.len() as u16).to_be_bytes()); // length
-                resp.extend_from_slice(payload);
-                resp
-            }, // encrypted_response
+            b"GET /test HTTP/1.1\r\nHost: example.com\r\n\r\n".to_vec(), // http_request
+            b"HTTP/1.1 200 OK\r\n\r\nHello".to_vec(), // http_response
             "example.com".to_string(), // domain
             1234567890, // timestamp
             200,        // expected_status
@@ -890,34 +719,14 @@ mod tests {
         let bundle = VefasCanonicalBundle::new(
             client_hello,
             server_hello,
-            Vec::new(), // empty encrypted_extensions
-            Vec::new(), // empty certificate_msg - should fail in strict mode
-            vec![15, 0, 0, 4, 17, 18, 19, 20], // certificate_verify_msg
-            vec![20, 0, 0, 4, 21, 22, 23, 24], // server_finished_msg
-            vec![20, 0, 0, 4, 21, 22, 23, 24], // client_finished_msg
-            [1u8; 32],  // client_private_key
             vec![vec![
                 // Mock certificate in DER format
                 0x30, 0x82, 0x01, 0x00, // Basic DER certificate structure
                 0x30, 0x81, 0xED, 0xA0, 0x03, 0x02, 0x01, 0x02, 0x02, 0x04, 0x12, 0x34, 0x56,
                 0x78, // Serial number
             ]], // certificate_chain
-            {
-                // Create properly formatted TLS ApplicationData record for encrypted_request
-                let mut req = vec![0x17, 0x03, 0x03]; // content_type=23 (ApplicationData), version=0x0303
-                let payload = b"GET /test HTTP/1.1\r\nHost: example.com\r\n\r\n";
-                req.extend_from_slice(&(payload.len() as u16).to_be_bytes()); // length
-                req.extend_from_slice(payload);
-                req
-            }, // encrypted_request
-            {
-                // Create properly formatted TLS ApplicationData record for encrypted_response
-                let mut resp = vec![0x17, 0x03, 0x03]; // content_type=23 (ApplicationData), version=0x0303
-                let payload = b"HTTP/1.1 200 OK\r\n\r\nHello";
-                resp.extend_from_slice(&(payload.len() as u16).to_be_bytes()); // length
-                resp.extend_from_slice(payload);
-                resp
-            }, // encrypted_response
+            b"GET /test HTTP/1.1\r\nHost: example.com\r\n\r\n".to_vec(), // http_request
+            b"HTTP/1.1 200 OK\r\n\r\nHello".to_vec(), // http_response
             "example.com".to_string(), // domain
             1234567890, // timestamp
             200,        // expected_status
@@ -944,29 +753,9 @@ mod tests {
         let bundle = VefasCanonicalBundle::new(
             vec![1, 0, 0, 6, 1, 2, 3, 4, 5, 6],    // client_hello
             vec![2, 0, 0, 6, 7, 8, 9, 10, 11, 12], // server_hello
-            vec![11, 0, 0, 4, 13, 14, 15, 16],     // encrypted_extensions
-            vec![11, 0, 0, 4, 13, 14, 15, 16],     // certificate_msg
-            vec![15, 0, 0, 4, 17, 18, 19, 20],     // certificate_verify_msg
-            vec![20, 0, 0, 4, 21, 22, 23, 24],     // server_finished_msg
-            vec![20, 0, 0, 4, 21, 22, 23, 24],     // client_finished_msg
-            [1u8; 32],                             // client_private_key
             vec![vec![1, 2, 3, 4]],                // certificate_chain
-            {
-                // Create properly formatted TLS ApplicationData record for encrypted_request
-                let mut req = vec![0x17, 0x03, 0x03]; // content_type=23 (ApplicationData), version=0x0303
-                let payload = b"GET /test HTTP/1.1\r\nHost: example.com\r\n\r\n";
-                req.extend_from_slice(&(payload.len() as u16).to_be_bytes()); // length
-                req.extend_from_slice(payload);
-                req
-            }, // encrypted_request
-            {
-                // Create properly formatted TLS ApplicationData record for encrypted_response
-                let mut resp = vec![0x17, 0x03, 0x03]; // content_type=23 (ApplicationData), version=0x0303
-                let payload = b"HTTP/1.1 200 OK\r\n\r\nHello";
-                resp.extend_from_slice(&(payload.len() as u16).to_be_bytes()); // length
-                resp.extend_from_slice(payload);
-                resp
-            }, // encrypted_response
+            b"GET /test HTTP/1.1\r\nHost: example.com\r\n\r\n".to_vec(), // http_request
+            b"HTTP/1.1 200 OK\r\n\r\nHello".to_vec(), // http_response
             "example.com".to_string(),             // domain
             0,                                     // invalid timestamp
             200,                                   // expected_status
@@ -1012,7 +801,7 @@ mod tests {
         let report = validator.validate_bundle(&bundle).unwrap();
 
         assert!(report.metadata.bundle_size > 0);
-        assert!(report.metadata.handshake_message_count >= 3); // ClientHello, ServerHello, Finished
+        assert!(report.metadata.handshake_message_count >= 2); // ClientHello, ServerHello
         assert_eq!(report.metadata.detected_tls_version, "TLS 1.3");
         assert_eq!(report.metadata.detected_cipher_suite, "Unknown");
     }

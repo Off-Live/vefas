@@ -471,29 +471,13 @@ impl SessionData {
         }
         
         // ServerFinished message extraction
-        // NOTE: In TLS 1.3, ServerFinished is sent as encrypted ApplicationData.
-        // Proper implementation requires capturing from rustls during handshake.
-        // For now, we create a placeholder structure. The guest verification
-        // SKIPS ServerFinished validation due to zkVM cycle cost, so this is acceptable.
-        // TODO: Capture actual ServerFinished from rustls handshake hooks
-        transcript_bundle.server_finished = Self::create_server_finished_placeholder();
+        // NOTE: ServerFinished is no longer captured in the new architecture.
+        // HandshakeProof provides sufficient binding without requiring ServerFinished.
+        // Verifier nodes handle TLS trust validation externally.
         
         Ok(transcript_bundle)
     }
 
-    /// Create a placeholder ServerFinished message structure
-    /// 
-    /// This creates a valid TLS 1.3 Finished message structure with placeholder verify_data.
-    /// The guest verification skips ServerFinished validation, so this is acceptable for now.
-    /// 
-    /// Format: [type: 0x14][length: 3 bytes][verify_data: 32 bytes]
-    fn create_server_finished_placeholder() -> Vec<u8> {
-        let mut server_finished = Vec::new();
-        server_finished.push(0x14); // Finished message type
-        server_finished.extend_from_slice(&[0x00, 0x00, 0x20]); // Length: 32 bytes
-        server_finished.extend_from_slice(&[0u8; 32]); // Placeholder verify_data
-        server_finished
-    }
 
     /// Extract handshake messages from raw TLS bytes
     fn extract_handshake_messages_from_bytes(&self, bytes: &[u8]) -> Result<Vec<RawHandshakeMessage>> {

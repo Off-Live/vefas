@@ -7,7 +7,7 @@ members = [
     "crates/vefas-crypto-sp1",
     "crates/vefas-crypto-risc0",
     "crates/vefas-core",
-    "crates/vefas-gateway",
+    "crates/vefas-node",
     "crates/vefas-rustls",
     "crates/vefas-sp1",
     "crates/vefas-sp1/script",
@@ -74,4 +74,4 @@ reqwest = { version = "0.12", features = ["json", "rustls-tls"] }
 serde_json = "1.0"
 axum = { version = "0.8", features = ["http2", "macros", "tracing"] }
 tower = { version = "0.5", features = ["util"] }
-vefas-gateway = { path = "crates/vefas-gateway" }
+vefas-node = { path = "crates/vefas-node" }

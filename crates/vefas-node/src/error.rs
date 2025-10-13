@@ -1,4 +1,4 @@
-//! Error types for VEFAS Gateway
+//! Error types for VEFAS Node
 
 use axum::{
     http::StatusCode,
@@ -10,9 +10,9 @@ use tracing::{error, warn};
 
 use vefas_core::VefasCoreError;
 
-/// VEFAS Gateway error types
+/// VEFAS Node error types
 #[derive(Debug, Error)]
-pub enum VefasGatewayError {
+pub enum VefasNodeError {
     #[error("Initialization error: {0}")]
     Initialization(String),
 
@@ -66,40 +66,40 @@ pub struct ErrorDetails {
     pub details: Option<serde_json::Value>,
 }
 
-impl VefasGatewayError {
+impl VefasNodeError {
     /// Get the HTTP status code for this error
     pub fn status_code(&self) -> StatusCode {
         match self {
-            VefasGatewayError::InvalidRequest(_) => StatusCode::BAD_REQUEST,
-            VefasGatewayError::UnsupportedPlatform(_) => StatusCode::BAD_REQUEST,
-            VefasGatewayError::ProofVerificationFailed(_) => StatusCode::BAD_REQUEST,
-            VefasGatewayError::RateLimitExceeded(_) => StatusCode::TOO_MANY_REQUESTS,
-            VefasGatewayError::Timeout(_) => StatusCode::REQUEST_TIMEOUT,
-            VefasGatewayError::Network(_) => StatusCode::BAD_GATEWAY,
-            VefasGatewayError::Configuration(_) => StatusCode::INTERNAL_SERVER_ERROR,
-            VefasGatewayError::Initialization(_) => StatusCode::INTERNAL_SERVER_ERROR,
-            VefasGatewayError::ProofGenerationFailed(_) => StatusCode::INTERNAL_SERVER_ERROR,
-            VefasGatewayError::VefasCore(_) => StatusCode::BAD_REQUEST,
-            VefasGatewayError::Serialization(_) => StatusCode::INTERNAL_SERVER_ERROR,
-            VefasGatewayError::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            VefasNodeError::InvalidRequest(_) => StatusCode::BAD_REQUEST,
+            VefasNodeError::UnsupportedPlatform(_) => StatusCode::BAD_REQUEST,
+            VefasNodeError::ProofVerificationFailed(_) => StatusCode::BAD_REQUEST,
+            VefasNodeError::RateLimitExceeded(_) => StatusCode::TOO_MANY_REQUESTS,
+            VefasNodeError::Timeout(_) => StatusCode::REQUEST_TIMEOUT,
+            VefasNodeError::Network(_) => StatusCode::BAD_GATEWAY,
+            VefasNodeError::Configuration(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            VefasNodeError::Initialization(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            VefasNodeError::ProofGenerationFailed(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            VefasNodeError::VefasCore(_) => StatusCode::BAD_REQUEST,
+            VefasNodeError::Serialization(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            VefasNodeError::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
 
     /// Get the error code string
     pub fn error_code(&self) -> &'static str {
         match self {
-            VefasGatewayError::InvalidRequest(_) => "INVALID_REQUEST",
-            VefasGatewayError::UnsupportedPlatform(_) => "UNSUPPORTED_PLATFORM",
-            VefasGatewayError::ProofVerificationFailed(_) => "PROOF_VERIFICATION_FAILED",
-            VefasGatewayError::ProofGenerationFailed(_) => "PROOF_GENERATION_FAILED",
-            VefasGatewayError::RateLimitExceeded(_) => "RATE_LIMIT_EXCEEDED",
-            VefasGatewayError::Timeout(_) => "TIMEOUT",
-            VefasGatewayError::Network(_) => "NETWORK_ERROR",
-            VefasGatewayError::Configuration(_) => "CONFIGURATION_ERROR",
-            VefasGatewayError::Initialization(_) => "INITIALIZATION_ERROR",
-            VefasGatewayError::VefasCore(_) => "VEFAS_CORE_ERROR",
-            VefasGatewayError::Serialization(_) => "SERIALIZATION_ERROR",
-            VefasGatewayError::Internal(_) => "INTERNAL_ERROR",
+            VefasNodeError::InvalidRequest(_) => "INVALID_REQUEST",
+            VefasNodeError::UnsupportedPlatform(_) => "UNSUPPORTED_PLATFORM",
+            VefasNodeError::ProofVerificationFailed(_) => "PROOF_VERIFICATION_FAILED",
+            VefasNodeError::ProofGenerationFailed(_) => "PROOF_GENERATION_FAILED",
+            VefasNodeError::RateLimitExceeded(_) => "RATE_LIMIT_EXCEEDED",
+            VefasNodeError::Timeout(_) => "TIMEOUT",
+            VefasNodeError::Network(_) => "NETWORK_ERROR",
+            VefasNodeError::Configuration(_) => "CONFIGURATION_ERROR",
+            VefasNodeError::Initialization(_) => "INITIALIZATION_ERROR",
+            VefasNodeError::VefasCore(_) => "VEFAS_CORE_ERROR",
+            VefasNodeError::Serialization(_) => "SERIALIZATION_ERROR",
+            VefasNodeError::Internal(_) => "INTERNAL_ERROR",
         }
     }
 
@@ -131,7 +131,7 @@ impl VefasGatewayError {
     }
 }
 
-impl IntoResponse for VefasGatewayError {
+impl IntoResponse for VefasNodeError {
     fn into_response(self) -> Response {
         let status = self.status_code();
         let error_response = self.to_error_response(None);
@@ -140,8 +140,8 @@ impl IntoResponse for VefasGatewayError {
     }
 }
 
-/// Result type for VEFAS Gateway operations
-pub type VefasGatewayResult<T> = Result<T, VefasGatewayError>;
+/// Result type for VEFAS Node operations
+pub type VefasNodeResult<T> = Result<T, VefasNodeError>;
 
 #[cfg(test)]
 mod tests {
@@ -150,15 +150,15 @@ mod tests {
     #[test]
     fn test_error_status_codes() {
         assert_eq!(
-            VefasGatewayError::InvalidRequest("test".to_string()).status_code(),
+            VefasNodeError::InvalidRequest("test".to_string()).status_code(),
             StatusCode::BAD_REQUEST
         );
         assert_eq!(
-            VefasGatewayError::Internal("test".to_string()).status_code(),
+            VefasNodeError::Internal("test".to_string()).status_code(),
             StatusCode::INTERNAL_SERVER_ERROR
         );
         assert_eq!(
-            VefasGatewayError::RateLimitExceeded("test".to_string()).status_code(),
+            VefasNodeError::RateLimitExceeded("test".to_string()).status_code(),
             StatusCode::TOO_MANY_REQUESTS
         );
     }
@@ -166,18 +166,18 @@ mod tests {
     #[test]
     fn test_error_codes() {
         assert_eq!(
-            VefasGatewayError::InvalidRequest("test".to_string()).error_code(),
+            VefasNodeError::InvalidRequest("test".to_string()).error_code(),
             "INVALID_REQUEST"
         );
         assert_eq!(
-            VefasGatewayError::ProofGenerationFailed("test".to_string()).error_code(),
+            VefasNodeError::ProofGenerationFailed("test".to_string()).error_code(),
             "PROOF_GENERATION_FAILED"
         );
     }
 
     #[test]
     fn test_error_response_conversion() {
-        let error = VefasGatewayError::InvalidRequest("Invalid URL".to_string());
+        let error = VefasNodeError::InvalidRequest("Invalid URL".to_string());
         let response = error.to_error_response(Some("session-123".to_string()));
 
         assert!(!response.success);

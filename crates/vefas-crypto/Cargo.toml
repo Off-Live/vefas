@@ -31,6 +31,9 @@ spki = { version = "0.7", default-features = false }
 # TLS parsing (robust no_std parsing with tls-parser/Rusticata)
 tls-parser = { version = "0.11", default-features = false }
 
+# X.509 certificate parsing (Rusticata - same ecosystem as tls-parser)
+x509-parser = { version = "0.16", default-features = false }
+
 [dev-dependencies]
 rstest = "0.26.1"
 proptest = "1.0"

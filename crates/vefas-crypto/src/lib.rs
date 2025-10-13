@@ -46,12 +46,14 @@ extern crate alloc;
 // Note: alloc types are available through submodules as needed
 use vefas_types::VefasResult;
 
+pub mod bundle_parser;
 pub mod constants;
 pub mod error;
 pub mod http_utils;
 pub mod input_validation;
 pub mod merkle;
 pub mod tls_parser;
+pub mod x509_parser;
 pub mod traits;
 pub mod types;
 pub mod validation;
@@ -73,6 +75,18 @@ pub use merkle::{
     DOMAIN_SEP_LEAF, DOMAIN_SEP_NODE,
 };
 
+// Re-export bundle parser utilities
+pub use bundle_parser::{
+    ZkvmLogger, NoOpLogger, U24,
+    extract_http_request, extract_http_response, extract_domain, extract_timestamp,
+    extract_cipher_suite, extract_shared_secret,
+    parse_http_request, parse_http_response,
+    extract_certificate_chain_hash, extract_handshake_transcript_hash,
+    extract_certificate_fingerprint, generate_proof_id,
+    extract_client_server_hello, extract_server_random, extract_server_pubkey_fingerprint,
+    build_handshake_proof, compute_certificate_fingerprint,
+};
+
 // Re-export utility modules for convenience
 pub use http_utils::{hex_lower, parse_http_data, HttpData};
 pub use input_validation::{validate_handshake_header, validate_tls_record_header, SafeParser};
@@ -83,15 +97,5 @@ pub use tls_parser::{
 pub use validation::{
     domain_matches, validate_certificate_chain_structure, validate_certificate_message,
     validate_x509_certificate, verify_certificate_chain_signatures, verify_certificate_signature,
+    validate_handshake_proof_integrity, validate_handshake_proof_from_merkle,
 };
-
-// Note: Implementation functions have been moved to vefas-crypto-native
-// This crate now only contains traits, types, and shared utilities
-
-// Certificate chain validation is handled by the production-grade functions in validation.rs:
-// - validate_certificate_chain_structure() for structural validation
-// - validate_certificate_domain_binding() for domain binding validation
-// - validate_x509_certificate() for individual certificate validation
-//
-// Full certificate chain validation (including CA trust, OCSP, etc.) would require
-// integrating a dedicated X.509 library and is marked as future work.

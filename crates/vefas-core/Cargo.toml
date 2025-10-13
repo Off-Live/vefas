@@ -13,7 +13,7 @@ webpki-roots = { version = "1.0", default-features = false }
 
 # VEFAS types
 vefas-types = { path = "../vefas-types", default-features = false }
-vefas-rustls = { path = "../vefas-rustls" }
+vefas-rustls = { path = "../vefas-rustls", default-features = false }
 vefas-crypto = { path = "../vefas-crypto", default-features = false }
 vefas-crypto-native = { path = "../vefas-crypto-native", default-features = false }
 
@@ -63,6 +63,8 @@ futures = "0.3"
 [features]
 default = ["std"]
 std = ["rustls/std", "webpki/std", "tokio", "tokio-rustls", "flate2", "brotli"]
+# Enable private key capture (required for zkTLS proof generation)
+private-key-capture = ["vefas-rustls/private-key-capture"]
 
 [package.metadata.docs.rs]
 all-features = true

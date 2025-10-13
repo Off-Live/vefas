@@ -25,7 +25,7 @@ pub const DOMAIN_SEP_NODE: u8 = 0x02;
 /// ## Internal Fields (Performance Optimization)
 /// These composite fields optimize zkVM performance while maintaining security:
 /// - HandshakeProof: Proves TLS handshake validity
-/// - CryptoWitness: Private cryptographic parameters
+/// - TlsVersion: Tls protocol version
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum FieldId {
     // === USER-VERIFIABLE FIELDS (Selective Disclosure) ===
@@ -56,24 +56,22 @@ pub enum FieldId {
     /// Users can prove when the request occurred.
     Timestamp = 4,
     
-    // === INTERNAL FIELDS (Performance Optimization) ===
+    // === INTERNAL VERIFICATION FIELDS ===
     
     /// Handshake Proof (Composite)
     /// 
-    /// Proves TLS 1.3 handshake validity without exposing individual messages.
+    /// Proves TLS handshake validity without exposing individual messages.
     /// 
-    /// Contains: ClientHello + ServerHello + AllHandshakeTranscript + ServerFinished
-    /// Format: [msg1_len(4)][msg1_data]...[transcript_len(4)][transcript][finished_len(4)][finished]
+    /// Contains: ClientHello + ServerHello + cert_fingerprint + server_random + cipher_suite
+    /// Format: [client_hello_len(4)][client_hello][server_hello_len(4)][server_hello][cert_fingerprint(32)][server_random(32)][cipher_suite(2)]
     HandshakeProof = 10,
     
-    /// Crypto Witness (Composite)
+    /// TLS Version
     /// 
-    /// Private cryptographic parameters for zkVM verification.
+    /// TLS protocol version (0x0303 for TLS 1.2, 0x0304 for TLS 1.3).
     /// 
-    /// Contains: SharedSecret + CipherSuite
-    /// Format: [shared_secret(32)][cipher_suite(2)]
-    /// Total: 34 bytes fixed size
-    CryptoWitness = 11,
+    /// Format: [2 bytes TLS version]
+    TlsVersion = 11,
 }
 
 /// Merkle inclusion proof

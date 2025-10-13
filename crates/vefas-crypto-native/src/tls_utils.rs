@@ -47,7 +47,7 @@ pub fn verify_session_keys(
         CipherSuite::Aes256GcmSha384 => provider.sha384(&[]).to_vec(),
         _ => provider.sha256(&[]).to_vec(),
     };
-    let hash_len: u8 = match cipher_suite {
+    let hash_len: usize = match cipher_suite {
         CipherSuite::Aes128GcmSha256 => 32,
         CipherSuite::Aes256GcmSha384 => 48,
         _ => 32,
@@ -118,10 +118,10 @@ pub fn verify_session_keys(
         hash_len,
     )?;
 
-    let c_key = provider.hkdf_expand_label(&c_ap, b"key", &[], key_len as u8)?;
-    let s_key = provider.hkdf_expand_label(&s_ap, b"key", &[], key_len as u8)?;
-    let c_iv = provider.hkdf_expand_label(&c_ap, b"iv", &[], iv_len as u8)?;
-    let s_iv = provider.hkdf_expand_label(&s_ap, b"iv", &[], iv_len as u8)?;
+    let c_key = provider.hkdf_expand_label(&c_ap, b"key", &[], key_len)?;
+    let s_key = provider.hkdf_expand_label(&s_ap, b"key", &[], key_len)?;
+    let c_iv = provider.hkdf_expand_label(&c_ap, b"iv", &[], iv_len)?;
+    let s_iv = provider.hkdf_expand_label(&s_ap, b"iv", &[], iv_len)?;
 
     let res_master =
         provider.hkdf_expand_label(&master_secret, b"res master", &handshake_hash_vec, hash_len)?;

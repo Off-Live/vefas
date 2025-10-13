@@ -1,9 +1,8 @@
 //! Proof generation and verification services for VEFAS Gateway
 
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use tracing::{debug, info, instrument, warn};
 use uuid::Uuid;
@@ -21,17 +20,17 @@ use vefas_sp1::VefasSp1Prover;
 #[cfg(feature = "risc0")]
 use vefas_risc0::VefasRisc0Prover;
 
-/// Proof service for handling zkVM proof generation and verification
-pub struct ProofService {
-    /// SP1 zkVM prover
+/// Prover Service for handling zkVM proof generation and verification
+pub struct ProverService {
+    /// SP1 zkVM prover (wrapped in Arc<Mutex<_>> for CUDA thread safety)
     #[cfg(feature = "sp1")]
-    sp1_prover: Option<VefasSp1Prover>,
+    sp1_prover: Option<Arc<Mutex<VefasSp1Prover>>>,
     /// RISC0 zkVM prover
     #[cfg(feature = "risc0")]
     risc0_prover: Option<VefasRisc0Prover>,
 }
 
-impl std::fmt::Debug for ProofService {
+impl std::fmt::Debug for ProverService {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut available_platforms: Vec<&str> = Vec::new();
 
@@ -45,15 +44,15 @@ impl std::fmt::Debug for ProofService {
             available_platforms.push("risc0");
         }
 
-        f.debug_struct("ProofService")
+        f.debug_struct("ProverService")
             .field("available_platforms", &available_platforms)
             .finish()
     }
 }
 
-impl ProofService {
+impl ProverService {
     /// Create a new proof service
-    pub async fn new() -> VefasGatewayResult<Self> {
+    pub async fn new() -> VefasNodeResult<Self> {
         let mut platform_count = 0;
 
         // Initialize SP1 prover if available
@@ -63,7 +62,8 @@ impl ProofService {
                 Ok(prover) => {
                     info!("SP1 zkVM prover initialized successfully");
                     platform_count += 1;
-                    Some(prover)
+                    // Wrap in Arc<Mutex<_>> for CUDA thread safety per SP1 docs
+                    Some(Arc::new(Mutex::new(prover)))
                 }
                 Err(_) => {
                     warn!("Failed to initialize SP1 prover, continuing without SP1 support");
@@ -90,7 +90,7 @@ impl ProofService {
 
         // Ensure we have at least one zkVM platform available
         if platform_count == 0 {
-            return Err(VefasGatewayError::Initialization(
+            return Err(VefasNodeError::Initialization(
                 "No zkVM platforms available. VEFAS requires at least one zkVM (SP1 or RISC0)"
                     .to_string(),
             ));
@@ -115,7 +115,7 @@ impl ProofService {
         &self,
         bundle: &VefasCanonicalBundle,
         platform: &ProofPlatform,
-    ) -> VefasGatewayResult<ProofData> {
+    ) -> VefasNodeResult<ProofData> {
         info!("Generating proof using platform: {:?}", platform);
 
         // Skip bundle validation - validation will be performed in the guest program
@@ -132,8 +132,16 @@ impl ProofService {
                 if let Some(ref prover) = self.sp1_prover {
                     info!("Using SP1 zkVM for cryptographic proof generation");
 
-                    let sp1_proof = prover.generate_zk_proof(bundle).map_err(|e| {
-                        VefasGatewayError::ProofGenerationFailed(format!(
+                    // Lock the SP1 prover for thread-safe CUDA access
+                    let sp1_prover = prover.lock().map_err(|e| {
+                        VefasNodeError::ProofGenerationFailed(format!(
+                            "Failed to acquire SP1 prover lock: {:?}",
+                            e
+                        ))
+                    })?;
+
+                    let sp1_proof = sp1_prover.generate_zk_proof(bundle).map_err(|e| {
+                        VefasNodeError::ProofGenerationFailed(format!(
                             "SP1 proof generation failed: {:?}",
                             e
                         ))
@@ -166,7 +174,7 @@ impl ProofService {
                         execution_metadata,
                     });
                 } else {
-                    return Err(VefasGatewayError::UnsupportedPlatform(
+                    return Err(VefasNodeError::UnsupportedPlatform(
                         "SP1 prover not initialized".to_string(),
                     ));
                 }
@@ -178,7 +186,7 @@ impl ProofService {
                     info!("Using RISC0 zkVM for cryptographic proof generation");
 
                     let risc0_proof = prover.generate_zk_proof(bundle).map_err(|e| {
-                        VefasGatewayError::ProofGenerationFailed(format!(
+                        VefasNodeError::ProofGenerationFailed(format!(
                             "RISC0 proof generation failed: {:?}",
                             e
                         ))
@@ -212,7 +220,7 @@ impl ProofService {
                         execution_metadata,
                     });
                 } else {
-                    return Err(VefasGatewayError::UnsupportedPlatform(
+                    return Err(VefasNodeError::UnsupportedPlatform(
                         "RISC0 prover not initialized".to_string(),
                     ));
                 }
@@ -221,14 +229,14 @@ impl ProofService {
             // Handle platforms not compiled in
             #[cfg(not(feature = "sp1"))]
             ProofPlatform::Sp1 => {
-                return Err(VefasGatewayError::UnsupportedPlatform(
+                return Err(VefasNodeError::UnsupportedPlatform(
                     "SP1 not compiled in".to_string(),
                 ));
             }
 
             #[cfg(not(feature = "risc0"))]
             ProofPlatform::Risc0 => {
-                return Err(VefasGatewayError::UnsupportedPlatform(
+                return Err(VefasNodeError::UnsupportedPlatform(
                     "RISC0 not compiled in".to_string(),
                 ));
             }
@@ -241,7 +249,7 @@ impl ProofService {
         &self,
         proof_data: &ProofData,
         expected_claim: Option<&ProofClaim>,
-    ) -> VefasGatewayResult<VerificationResult> {
+    ) -> VefasNodeResult<VerificationResult> {
         let start_time = Instant::now();
 
         info!("Verifying proof for platform: {}", proof_data.platform);
@@ -250,7 +258,7 @@ impl ProofService {
         use base64::{engine::general_purpose, Engine as _};
         let proof_bytes = general_purpose::STANDARD
             .decode(&proof_data.proof_data)
-            .map_err(|e| VefasGatewayError::InvalidRequest(format!("Invalid proof data: {}", e)))?;
+            .map_err(|e| VefasNodeError::InvalidRequest(format!("Invalid proof data: {}", e)))?;
 
         let verified_claim = match proof_data.platform.as_str() {
             #[cfg(feature = "sp1")]
@@ -268,7 +276,7 @@ impl ProofService {
                         proof_data.execution_metadata.proof_time_ms,
                     )
                     .map_err(|e| {
-                        VefasGatewayError::InvalidRequest(format!(
+                        VefasNodeError::InvalidRequest(format!(
                             "Invalid execution metadata: {:?}",
                             e
                         ))
@@ -281,8 +289,15 @@ impl ProofService {
                     };
 
                     // Verify the SP1 proof
-                    let verified = prover.verify_proof(&sp1_proof).map_err(|e| {
-                        VefasGatewayError::ProofVerificationFailed(format!(
+                    let sp1_prover = prover.lock().map_err(|e| {
+                        VefasNodeError::ProofVerificationFailed(format!(
+                            "Failed to acquire SP1 prover lock: {:?}",
+                            e
+                        ))
+                    })?;
+                    
+                    let verified = sp1_prover.verify_proof(&sp1_proof).map_err(|e| {
+                        VefasNodeError::ProofVerificationFailed(format!(
                             "SP1 proof verification failed: {:?}",
                             e
                         ))
@@ -291,7 +306,7 @@ impl ProofService {
                     // The verified result is already VefasProofClaim (unified type)
                     verified
                 } else {
-                    return Err(VefasGatewayError::UnsupportedPlatform(
+                    return Err(VefasNodeError::UnsupportedPlatform(
                         "SP1 prover not initialized".to_string(),
                     ));
                 }
@@ -312,7 +327,7 @@ impl ProofService {
                         proof_data.execution_metadata.proof_time_ms,
                     )
                     .map_err(|e| {
-                        VefasGatewayError::InvalidRequest(format!(
+                        VefasNodeError::InvalidRequest(format!(
                             "Invalid execution metadata: {:?}",
                             e
                         ))
@@ -326,7 +341,7 @@ impl ProofService {
 
                     // Verify the RISC0 proof
                     let verified = prover.verify_proof(&risc0_proof).map_err(|e| {
-                        VefasGatewayError::ProofVerificationFailed(format!(
+                        VefasNodeError::ProofVerificationFailed(format!(
                             "RISC0 proof verification failed: {:?}",
                             e
                         ))
@@ -335,14 +350,14 @@ impl ProofService {
                     // The verified result is already VefasProofClaim (unified type)
                     verified
                 } else {
-                    return Err(VefasGatewayError::UnsupportedPlatform(
+                    return Err(VefasNodeError::UnsupportedPlatform(
                         "RISC0 prover not initialized".to_string(),
                     ));
                 }
             }
 
             _ => {
-                return Err(VefasGatewayError::UnsupportedPlatform(format!(
+                return Err(VefasNodeError::UnsupportedPlatform(format!(
                     "Unsupported platform: {}",
                     proof_data.platform
                 )));
@@ -352,7 +367,7 @@ impl ProofService {
         // Validate against expected claim if provided
         if let Some(expected) = expected_claim {
             if !self.claims_match(&verified_claim, expected) {
-                return Err(VefasGatewayError::ProofVerificationFailed(
+                return Err(VefasNodeError::ProofVerificationFailed(
                     "Verified claim does not match expected claim".to_string(),
                 ));
             }
@@ -379,6 +394,9 @@ impl ProofService {
             platform: proof_data.platform.clone(),
             verified_claim,
             verification_metadata,
+            validation_errors: vec![], // Layer 1 only - no Layer 2 errors
+            merkle_proofs_validated: 0, // Layer 1 doesn't validate Merkle proofs
+            claim_verification_passed: true, // Layer 1 verifies the claim is extractable
         })
     }
 
@@ -432,7 +450,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_proof_service_creation() {
-        let service = ProofService::new().await;
+        let service = ProverService::new().await;
         assert!(
             service.is_ok(),
             "Proof service should be created successfully"
@@ -447,7 +465,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_mock_proof_generation() {
-        let service = ProofService::new().await.unwrap();
+        let service = ProverService::new().await.unwrap();
 
         // Skip: constructing a real bundle requires vefas-core session capture
         // This test now only ensures the service is created; integration tests cover proofs
@@ -459,7 +477,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_mock_proof_verification() {
-        let service = ProofService::new().await.unwrap();
+        let service = ProverService::new().await.unwrap();
         // Without a real bundle/proof, skip this test here; covered by integration tests
         return;
     }

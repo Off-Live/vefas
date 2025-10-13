@@ -13,12 +13,13 @@
 //! No mocks, no shortcuts - this is production-grade zkVM integration.
 
 use vefas_types::{
-    compression::CompressedBundle, VefasCanonicalBundle, VefasError, VefasExecutionMetadata,
+    VefasCanonicalBundle, VefasError, VefasExecutionMetadata,
     VefasPerformanceMetrics, VefasProofClaim, VefasResult, errors::CryptoErrorType,
 };
 // VefasCrypto trait import removed - zkVM integration is handled directly through VefasRisc0Prover
-use risc0_zkvm::{default_prover, ExecutorEnv, Receipt, ProverOpts};
+use risc0_zkvm::{default_prover, ExecutorEnv, Receipt, ProverOpts, Prover};
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 use std::time::Instant;
 
 // Include the compiled RISC0 guest program ELF and method ID
@@ -45,19 +46,35 @@ pub struct VefasRisc0Proof {
 ///
 /// Implementation follows the official RISC0 examples:
 /// - Uses ExecutorEnv::builder() for environment setup
-/// - Uses default_prover() for proof generation
+/// - Uses default_prover() for proof generation (initialized in new())
 /// - Uses Receipt::verify() for proof verification
 /// - Uses env::read() and env::commit() in guest program
 pub struct VefasRisc0Prover {
-    /// RISC0 prover instance
+    /// Marker to indicate prover type (CPU or CUDA)
+    /// Note: RISC0's default_prover() returns Rc<dyn Prover> which is not Send,
+    /// so we call it on-demand in generate_zk_proof() instead of storing it.
+    /// This differs from SP1 which can store the prover directly.
     _phantom: std::marker::PhantomData<()>,
 }
 
 impl VefasRisc0Prover {
     /// Create a new VEFAS RISC0 prover
     ///
-    /// Uses the correct RISC0 SDK API pattern from official examples.
+    /// Note: Unlike SP1, RISC0's default_prover() returns Rc<dyn Prover> which is not thread-safe.
+    /// We display initialization messages here but create the actual prover in generate_zk_proof().
     pub fn new() -> Self {
+        #[cfg(feature = "cuda")]
+        {
+            println!("RISC0: Will use CUDA-accelerated prover for proof generation");
+            println!("RISC0: GPU acceleration provides 10-100x speedup over CPU");
+        }
+
+        #[cfg(not(feature = "cuda"))]
+        {
+            println!("RISC0: Will use CPU prover for proof generation");
+            println!("RISC0: Tip: Enable 'cuda' feature for 10-100x faster proof generation");
+        }
+
         Self {
             _phantom: std::marker::PhantomData,
         }
@@ -73,7 +90,7 @@ impl VefasRisc0Prover {
     /// 3. Timestamp and domain binding
     ///
     /// This method supports both compressed and uncompressed bundles.
-    /// The guest program will automatically handle decompression if needed.
+    /// The guest program will handle the bundle verification directly.
     ///
     /// Implementation follows the official RISC0 examples pattern:
     /// 1. Create ExecutorEnv and write bundle data
@@ -87,22 +104,10 @@ impl VefasRisc0Prover {
         // This allows the gateway to capture TLS sessions without enforcing validation rules
         // that should be verified within the zkVM guest program for cryptographic proof
 
-        // Determine if we should compress the bundle for better performance
-        let input_data = if self.should_compress_bundle(bundle)? {
-            println!("RISC0: Compressing bundle for better performance");
-            let compressed = self.compress_bundle(bundle)?;
-            bincode::serialize(&compressed).map_err(|e| {
-                VefasError::serialization_error(&format!(
-                    "Failed to serialize compressed bundle: {}",
-                    e
-                ))
-            })?
-        } else {
-            println!("RISC0: Using uncompressed bundle");
-            bincode::serialize(bundle).map_err(|e| {
-                VefasError::serialization_error(&format!("Failed to serialize bundle: {}", e))
-            })?
-        };
+        // Serialize bundle directly
+        let input_data = bincode::serialize(bundle).map_err(|e| {
+            VefasError::serialization_error(&format!("Failed to serialize bundle: {}", e))
+        })?;
 
         // Create executor environment with serialized bundle data
         let env = ExecutorEnv::builder()
@@ -122,21 +127,12 @@ impl VefasRisc0Prover {
             })?;
 
         // Generate proof - this is the slowest step (10-60 seconds CPU, 1-5 seconds GPU)
+        // Note: We call default_prover() here instead of storing it because RISC0 returns
+        // Rc<dyn Prover> which is not Send (required for async/Axum handlers)
         let proof_start = Instant::now();
         let prover = default_prover();
-        
-        #[cfg(feature = "cuda")]
-        {
-            println!("RISC0: Starting CUDA-accelerated proof generation...");
-            println!("RISC0: Using GPU for proof generation (10-100x faster than CPU)");
-        }
-        
-        #[cfg(not(feature = "cuda"))]
-        {
-            println!("RISC0: Starting CPU proof generation (this may take 10-60 seconds)...");
-            println!("RISC0: Tip: Enable 'cuda' feature for 10-100x faster proof generation");
-        }
-        
+
+        println!("RISC0: Starting proof generation...");
         println!("RISC0: Running prover.prove() - generating STARK proof...");
         let opts = ProverOpts::default();
         let prove_info = prover
@@ -206,50 +202,7 @@ impl VefasRisc0Prover {
         Ok(claim)
     }
 
-    /// Determine if bundle should be compressed for better performance
-    fn should_compress_bundle(&self, bundle: &VefasCanonicalBundle) -> VefasResult<bool> {
-        // Serialize bundle to check actual compressibility
-        let bundle_data = bincode::serialize(bundle).map_err(|e| {
-            VefasError::serialization_error(&format!(
-                "Failed to serialize bundle for compression check: {}",
-                e
-            ))
-        })?;
 
-        // Only compress if data is likely to benefit from compression
-        Ok(vefas_types::compression::BundleCompressor::should_compress(&bundle_data))
-    }
-
-    /// Compress bundle using LZSS compression
-    fn compress_bundle(&self, bundle: &VefasCanonicalBundle) -> VefasResult<CompressedBundle> {
-        // Serialize bundle first
-        let bundle_data = bincode::serialize(bundle).map_err(|e| {
-            VefasError::serialization_error(&format!(
-                "Failed to serialize bundle for compression: {}",
-                e
-            ))
-        })?;
-
-        // Check if compression is likely to be beneficial
-        if !vefas_types::compression::BundleCompressor::should_compress(&bundle_data) {
-            return Err(VefasError::crypto_error(
-                CryptoErrorType::CipherFailed,
-                "Bundle data is not compressible - skipping compression",
-            ));
-        }
-
-        // Compress using LZSS
-        let compressed = vefas_types::compression::BundleCompressor::compress(&bundle_data)?;
-
-        println!(
-            "RISC0: Compressed bundle from {} to {} bytes ({:.1}% ratio)",
-            compressed.original_size,
-            compressed.compressed_data.len(),
-            compressed.compression_ratio()
-        );
-
-        Ok(compressed)
-    }
 
     /// Log detailed performance metrics
     fn log_performance_metrics(&self, metrics: &VefasPerformanceMetrics) {
@@ -257,42 +210,10 @@ impl VefasRisc0Prover {
         println!("Total cycles: {}", metrics.total_cycles);
         println!("Breakdown by operation:");
 
-        if metrics.decompression_cycles > 0 {
-            println!(
-                "  Decompression: {} cycles ({:.1}%)",
-                metrics.decompression_cycles,
-                (metrics.decompression_cycles as f64 / metrics.total_cycles as f64) * 100.0
-            );
-        }
-
         println!(
-            "  Validation: {} cycles ({:.1}%)",
-            metrics.validation_cycles,
-            (metrics.validation_cycles as f64 / metrics.total_cycles as f64) * 100.0
-        );
-
-        println!(
-            "  Handshake: {} cycles ({:.1}%)",
-            metrics.handshake_cycles,
-            (metrics.handshake_cycles as f64 / metrics.total_cycles as f64) * 100.0
-        );
-
-        println!(
-            "  Certificate validation: {} cycles ({:.1}%)",
-            metrics.certificate_validation_cycles,
-            (metrics.certificate_validation_cycles as f64 / metrics.total_cycles as f64) * 100.0
-        );
-
-        println!(
-            "  Key derivation: {} cycles ({:.1}%)",
-            metrics.key_derivation_cycles,
-            (metrics.key_derivation_cycles as f64 / metrics.total_cycles as f64) * 100.0
-        );
-
-        println!(
-            "  Decryption: {} cycles ({:.1}%)",
-            metrics.decryption_cycles,
-            (metrics.decryption_cycles as f64 / metrics.total_cycles as f64) * 100.0
+            "  Merkle verification: {} cycles ({:.1}%)",
+            metrics.merkle_verification_cycles,
+            (metrics.merkle_verification_cycles as f64 / metrics.total_cycles as f64) * 100.0
         );
 
         println!(
@@ -312,16 +233,6 @@ impl VefasRisc0Prover {
             metrics.memory_usage,
             metrics.memory_usage as f64 / 1024.0
         );
-
-        if let Some(ratio) = metrics.compression_ratio {
-            println!("Compression ratio: {:.1}%", ratio);
-            if let (Some(original), Some(decompressed)) = (
-                metrics.original_bundle_size,
-                metrics.decompressed_bundle_size,
-            ) {
-                println!("Bundle size: {} -> {} bytes", original, decompressed);
-            }
-        }
 
         println!("================================\n");
     }

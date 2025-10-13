@@ -43,25 +43,25 @@ extern crate std;
 // No imports needed at lib level
 
 pub mod bundle;
-pub mod compression;
 pub mod crypto_provider;
 pub mod errors;
+pub mod handshake_proof;
 pub mod http;
 pub mod input;
 pub mod output;
 pub mod tls;
+pub mod traits;
 pub mod utils;
 
 // Re-export core types for convenience
 pub use bundle::{VefasCanonicalBundle, BundleMetadata};
-#[cfg(debug_assertions)]
-pub use bundle::DebugKeyMaterial;
-pub use compression::{CompressedBundle, BundleCompressor, CompressionStats, CompressionAlgorithm, CompressionParameters};
 pub use errors::{VefasError, VefasResult};
+pub use handshake_proof::{HandshakeProof, HandshakeProofBuilder};
 pub use http::{HttpMethod, HttpRequest, HttpResponse, HttpStatusCode, HttpHeaders};
 pub use input::{VefasInput, TlsSessionData, VefasMetadata};
 pub use output::{VefasProof, VefasProofClaim, VefasExecutionMetadata, VefasPerformanceMetrics};
 pub use tls::{TlsVersion, CipherSuite, SessionKeys, HandshakeData, CertificateChain};
+pub use traits::{Hash, Kdf, KeyExchange};
 
 /// Protocol version for VEFAS data structures
 pub const VEFAS_PROTOCOL_VERSION: u16 = 1;

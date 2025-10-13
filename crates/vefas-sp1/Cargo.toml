@@ -37,4 +37,4 @@ tokio = { version = "1", features = ["full"] }
 [features]
 default = ["host-prover"]
 host-prover = ["sp1-sdk", "vefas-sp1-script", "sp1-core-executor"]
-cuda = []  # CUDA acceleration for SP1 (runtime configured via SP1_PROVER=cuda or builder)
+cuda = []  # CUDA acceleration for SP1 (requires CUDA 12, 24GB+ VRAM, Compute Capability 8.6+)
